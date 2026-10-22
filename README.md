@@ -191,3 +191,7 @@ composer install && composer test
 PHPUnit + Orchestra Testbench on SQLite, with the same folding and
 search-splitting vectors as the TypeScript core, and Livewire component tests
 for sorting, filters, tampered URL state, selection scope and escaping.
+
+## License
+
+[MIT](LICENSE). Provided “as is”, without warranty of any kind; the authors and Acunsoft accept no liability for any damage or data loss arising from its use (see LICENSE).
