@@ -1,0 +1,444 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Acunsoft\DataTable\Laravel\Livewire;
+
+use Acunsoft\DataTable\Laravel\Column;
+use Acunsoft\DataTable\Laravel\InvalidTableQuery;
+use Acunsoft\DataTable\Laravel\QueryApplier;
+use Acunsoft\DataTable\Laravel\TableQuery;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Contracts\View\View;
+use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
+use Illuminate\Database\Query\Builder as QueryBuilder;
+use Livewire\Attributes\Computed;
+use Livewire\Attributes\Locked;
+use Livewire\Attributes\Url;
+use Livewire\WithPagination;
+
+/**
+ * A server-side data table for a Livewire component.
+ *
+ * Declare `columns()` and `query()`; the trait keeps search, sorting, filters
+ * and page size in the URL (the same names as the HTTP wire format: `search`,
+ * `sort=field:dir,…`, `filters[i][field|op|value]`, `pageSize`, `page`), applies
+ * them with QueryApplier and renders `acun-datatable::livewire.table` unless
+ * the component has its own `render()`.
+ *
+ * Every value from the browser is untrusted: URL state that does not match the
+ * declared columns is dropped instead of failing the page, only declared
+ * columns reach the SQL, and selected keys are only ever looked up inside
+ * `query()`, so selection cannot reach rows outside the developer's scope.
+ *
+ * One table per page: the URL names are not prefixed.
+ */
+trait WithDataTable
+{
+    use WithPagination;
+
+    #[Url(except: '')]
+    public string $search = '';
+
+    /** `field:dir,…`, e.g. `total:desc,customer:asc`. */
+    #[Url(except: '')]
+    public string $sort = '';
+
+    /** @var array<int, mixed> list of `['field' => …, 'op' => …, 'value' => …]` */
+    #[Url(except: [])]
+    public array $filters = [];
+
+    #[Url(except: 25)]
+    public int $pageSize = 25;
+
+    /** @var array<int, mixed> keys of explicitly selected rows */
+    public array $selected = [];
+
+    /** Every row matching the current search and filters, except `$excluded`. */
+    #[Locked]
+    public bool $allMatching = false;
+
+    /** @var list<string> */
+    #[Locked]
+    public array $excluded = [];
+
+    /** @return iterable<Column> */
+    abstract protected function columns(): iterable;
+
+    /** The rows this user may see; everything the table does stays inside it. */
+    abstract protected function query(): EloquentBuilder|QueryBuilder;
+
+    /** @return list<int> */
+    protected function pageSizeOptions(): array
+    {
+        return [10, 25, 50, 100];
+    }
+
+    /** Explicitly selected keys are limited; "all matching" selection has no limit. */
+    protected function maxSelected(): int
+    {
+        return 1000;
+    }
+
+    /** Off by default: return true to show the selection column. */
+    protected function selectable(): bool
+    {
+        return false;
+    }
+
+    protected function caption(): ?string
+    {
+        return null;
+    }
+
+    /** The key column for a query builder (Eloquent uses the model key). */
+    protected function keyName(): string
+    {
+        return 'id';
+    }
+
+    /** The row's name for screen readers ("Select Ayşe"): the first column's text by default. */
+    protected function rowLabel(mixed $row): string
+    {
+        foreach ($this->dataTableColumns() as $column) {
+            $text = \Acunsoft\DataTable\Laravel\Support\Format::cell($column, $row);
+            if (trim($text) !== '') {
+                return $text;
+            }
+        }
+
+        return $this->rowKey($row);
+    }
+
+    protected function rowKey(mixed $row): string
+    {
+        $key = is_object($row) && method_exists($row, 'getKey') ? $row->getKey() : data_get($row, $this->keyName());
+
+        return (string) $key;
+    }
+
+    public function render(): View
+    {
+        return view('acun-datatable::livewire.table');
+    }
+
+    #[Computed]
+    public function rows(): LengthAwarePaginator
+    {
+        $query = $this->dataTableQuery();
+        $rows = QueryApplier::paginate($this->query(), $query, $this->dataTableColumns());
+        if ($rows->isEmpty() && $query->page > 1 && $rows->total() > 0) {
+            // The page is past the end (rows were deleted, or the URL was edited): show the last one.
+            $this->setPage($rows->lastPage());
+            $rows = QueryApplier::paginate($this->query(), $this->dataTableQuery(), $this->dataTableColumns());
+        }
+
+        return $rows;
+    }
+
+    /** @return list<Column> */
+    protected function dataTableColumns(): array
+    {
+        $columns = [];
+        foreach ($this->columns() as $column) {
+            if (! $column instanceof Column) {
+                throw new \UnexpectedValueException(static::class.'::columns() must return Column instances.');
+            }
+            $columns[] = $column;
+        }
+
+        return $columns;
+    }
+
+    /** @return list<array{field: string, direction: 'asc'|'desc'}> */
+    protected function sorting(): array
+    {
+        return $this->dataTableQuery()->sorting;
+    }
+
+    // Sorting --------------------------------------------------------------
+
+    /**
+     * A click cycles ascending → descending → none. With `$additive` (Shift+click
+     * in the view) the column is added to or changed in a multi-column sort.
+     */
+    public function sortBy(string $field, bool $additive = false): void
+    {
+        $column = $this->dataTableColumn($field);
+        if ($column === null || ! $column->isSortable()) {
+            return;
+        }
+        $current = [];
+        foreach ($this->sorting() as $rule) {
+            $current[$rule['field']] = $rule['direction'];
+        }
+        $existing = $current[$field] ?? null;
+        $direction = $existing === null ? 'asc' : ($existing === 'asc' ? 'desc' : null);
+        if (! $additive) {
+            $current = $direction === null ? [] : [$field => $direction];
+        } elseif ($direction === null) {
+            unset($current[$field]);
+        } else {
+            $current[$field] = $direction; // keeps its position when it was already sorted
+        }
+        $current = array_slice($current, 0, TableQuery::MAX_SORT_RULES, true);
+        $this->sort = implode(',', array_map(fn ($f, $d) => "{$f}:{$d}", array_keys($current), $current));
+        $this->resetPage();
+    }
+
+    // Filters --------------------------------------------------------------
+
+    /** Add or replace the rule for this field and operator. */
+    public function setFilter(string $field, string $op, mixed $value = null): void
+    {
+        $rules = array_values(array_filter(
+            $this->dataTableQuery()->filters,
+            fn (array $rule) => ! ($rule['field'] === $field && $rule['operator'] === $op),
+        ));
+        $rules = array_map(fn (array $rule) => ['field' => $rule['field'], 'op' => $rule['operator'], 'value' => $rule['value']], $rules);
+        $candidate = ['field' => $field, 'op' => $op, 'value' => $value];
+        if ($this->validFilter($candidate)) {
+            $rules[] = $candidate;
+        }
+        $this->filters = array_slice($rules, 0, TableQuery::MAX_FILTERS);
+        $this->tableChanged();
+    }
+
+    public function removeFilter(int $index): void
+    {
+        $filters = array_values($this->filters);
+        unset($filters[$index]);
+        $this->filters = array_values($filters);
+        $this->tableChanged();
+    }
+
+    public function clearFilters(): void
+    {
+        $this->filters = [];
+        $this->search = '';
+        $this->tableChanged();
+    }
+
+    public function updatedSearch(): void
+    {
+        $this->tableChanged();
+    }
+
+    public function updatedFilters(): void
+    {
+        $this->tableChanged();
+    }
+
+    public function updatedPageSize(): void
+    {
+        $this->resetPage();
+    }
+
+    // Selection ------------------------------------------------------------
+
+    protected function isSelected(string $key): bool
+    {
+        return $this->allMatching
+            ? ! in_array($key, $this->excluded, true)
+            : in_array($key, $this->selectedKeys(), true);
+    }
+
+    public function toggleRow(string|int $key): void
+    {
+        $key = (string) $key;
+        if ($this->allMatching) {
+            $this->excluded = in_array($key, $this->excluded, true)
+                ? array_values(array_diff($this->excluded, [$key]))
+                : [...$this->excluded, $key];
+
+            return;
+        }
+        $selected = $this->selectedKeys();
+        if (in_array($key, $selected, true)) {
+            $this->selected = array_values(array_diff($selected, [$key]));
+        } elseif (count($selected) < $this->maxSelected()) {
+            $this->selected = [...$selected, $key];
+        }
+    }
+
+    /** Select the rows of the current page, or clear them when all are selected. */
+    public function togglePage(): void
+    {
+        $keys = $this->pageKeys();
+        $all = $keys !== [] && array_reduce($keys, fn (bool $carry, string $key) => $carry && $this->isSelected($key), true);
+        if ($this->allMatching) {
+            $this->excluded = $all
+                ? array_values(array_unique([...$this->excluded, ...$keys]))
+                : array_values(array_diff($this->excluded, $keys));
+
+            return;
+        }
+        $selected = $this->selectedKeys();
+        $this->selected = $all
+            ? array_values(array_diff($selected, $keys))
+            : array_slice(array_values(array_unique([...$selected, ...$keys])), 0, $this->maxSelected());
+    }
+
+    /** 'none', 'some' or 'all' for the rows on the current page. */
+    protected function pageSelection(): string
+    {
+        $keys = $this->pageKeys();
+        $count = count(array_filter($keys, fn (string $key) => $this->isSelected($key)));
+
+        return match (true) {
+            $count === 0 => 'none',
+            $count === count($keys) => 'all',
+            default => 'some',
+        };
+    }
+
+    public function selectAllMatching(): void
+    {
+        $this->allMatching = true;
+        $this->excluded = [];
+        $this->selected = [];
+    }
+
+    public function clearSelection(): void
+    {
+        $this->allMatching = false;
+        $this->excluded = [];
+        $this->selected = [];
+    }
+
+    protected function selectedCount(): int
+    {
+        return $this->allMatching ? $this->selectedQuery()->count() : count($this->selectedKeys());
+    }
+
+    /**
+     * The selected rows as a query inside `query()`, for bulk actions:
+     * `$this->selectedQuery()->update([...])` or `->get()`.
+     */
+    protected function selectedQuery(): EloquentBuilder|QueryBuilder
+    {
+        if ($this->allMatching) {
+            $query = $this->dataTableQuery();
+            $builder = QueryApplier::apply(
+                $this->query(),
+                TableQuery::fromArray(['filters' => $this->wireFilters($query), 'search' => $query->search]),
+                $this->dataTableColumns(),
+            );
+
+            return $this->excluded === [] ? $builder : $this->whereKeys($builder, $this->excluded, not: true);
+        }
+
+        return $this->whereKeys($this->query(), $this->selectedKeys());
+    }
+
+    // Internals ------------------------------------------------------------
+
+    /** The current state as a validated query; parts that do not fit the columns are dropped. */
+    protected function dataTableQuery(): TableQuery
+    {
+        $sizes = $this->pageSizeOptions();
+        $max = max($sizes);
+        $pageSize = in_array($this->pageSize, $sizes, true) ? $this->pageSize : (in_array(25, $sizes, true) ? 25 : $sizes[0]);
+
+        $sort = [];
+        foreach ($this->sort === '' ? [] : explode(',', $this->sort) as $part) {
+            [$field, $direction] = array_pad(explode(':', $part, 2), 2, '');
+            $column = $this->dataTableColumn($field);
+            if ($column !== null && $column->isSortable() && in_array($direction, ['asc', 'desc'], true) && ! isset($sort[$field])) {
+                $sort[$field] = "{$field}:{$direction}";
+            }
+        }
+
+        $filters = [];
+        foreach (array_values($this->filters) as $rule) {
+            if (count($filters) < TableQuery::MAX_FILTERS && $this->validFilter($rule)) {
+                $filters[] = $rule;
+            }
+        }
+
+        $page = $this->getPage();
+        $page = is_int($page) || (is_string($page) && ctype_digit($page)) ? (int) $page : 1;
+
+        return TableQuery::fromArray([
+            'page' => min(max($page, 1), TableQuery::MAX_PAGE),
+            'pageSize' => $pageSize,
+            'sort' => implode(',', array_slice($sort, 0, TableQuery::MAX_SORT_RULES)),
+            'filters' => $filters,
+            'search' => mb_substr($this->search, 0, TableQuery::MAX_TEXT),
+        ], $max, $pageSize);
+    }
+
+    protected function tableChanged(): void
+    {
+        $this->resetPage();
+        $this->clearSelection();
+    }
+
+    private function validFilter(mixed $rule): bool
+    {
+        if (! is_array($rule) || ! is_string($rule['field'] ?? null)) {
+            return false;
+        }
+        $column = $this->dataTableColumn($rule['field']);
+        if ($column === null || ! $column->isFilterable()) {
+            return false;
+        }
+        try {
+            $query = TableQuery::fromArray(['filters' => [$rule]]);
+            if ($query->filters === []) {
+                return false; // a blank contains/startsWith constrains nothing
+            }
+            QueryApplier::apply($this->query(), $query, [$column]); // checks the value for the column type; nothing runs
+        } catch (InvalidTableQuery) {
+            return false;
+        }
+
+        return true;
+    }
+
+    private function dataTableColumn(string $id): ?Column
+    {
+        foreach ($this->dataTableColumns() as $column) {
+            if ($column->id() === $id) {
+                return $column;
+            }
+        }
+
+        return null;
+    }
+
+    /** @return list<string> */
+    private function selectedKeys(): array
+    {
+        $keys = [];
+        foreach ($this->selected as $key) {
+            if ((is_string($key) || is_int($key)) && strlen((string) $key) <= 64 && ! in_array((string) $key, $keys, true)) {
+                $keys[] = (string) $key;
+            }
+        }
+
+        return array_slice($keys, 0, $this->maxSelected());
+    }
+
+    /** @return list<string> */
+    private function pageKeys(): array
+    {
+        return array_map(fn ($row) => $this->rowKey($row), $this->rows->items());
+    }
+
+    /** @return list<array{field: string, op: string, value: mixed}> */
+    private function wireFilters(TableQuery $query): array
+    {
+        return array_map(fn (array $rule) => ['field' => $rule['field'], 'op' => $rule['operator'], 'value' => $rule['value']], $query->filters);
+    }
+
+    /** @param list<string> $keys */
+    private function whereKeys(EloquentBuilder|QueryBuilder $builder, array $keys, bool $not = false): EloquentBuilder|QueryBuilder
+    {
+        if ($builder instanceof EloquentBuilder) {
+            return $not ? $builder->whereKeyNot($keys) : $builder->whereKey($keys);
+        }
+
+        return $not ? $builder->whereNotIn($this->keyName(), $keys) : $builder->whereIn($this->keyName(), $keys);
+    }
+}

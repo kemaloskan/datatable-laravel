@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Acunsoft\DataTable\Laravel;
 
+use Closure;
 use InvalidArgumentException;
 
 /**
@@ -24,6 +25,7 @@ final class Column
     private bool $filterable = false;
     private ?bool $searchable = null;
     private ?string $searchColumn = null;
+    private ?Closure $formatter = null;
 
     private function __construct(private readonly string $id)
     {
@@ -88,6 +90,16 @@ final class Column
         return $this->with('searchColumn', self::identifier($foldedColumn));
     }
 
+    /**
+     * Display text for the Livewire views: `fn (mixed $value, mixed $row): string`.
+     * Blade escapes the result; return plain text, not HTML.
+     */
+    public function format(Closure $formatter): self
+    {
+        return $this->with('formatter', $formatter);
+    }
+
+    public function formatter(): ?Closure { return $this->formatter; }
     public function id(): string { return $this->id; }
     public function databaseColumn(): string { return $this->column; }
     public function headerText(): string { return $this->header; }

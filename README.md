@@ -1,8 +1,21 @@
 # acunsoft/datatable-laravel
 
-Server side for Acun DataTable, for Laravel and Livewire in one package. This
-first part is the **query layer** and the **JSON endpoint** used by
-`@acunsoft/datatable-http`; the Livewire integration builds on it (in progress).
+Server side for Acun DataTable, for Laravel and Livewire in one package:
+
+- a **query layer** (allowlisted columns, operators, smart search, limits),
+- a **JSON endpoint** for `@acunsoft/datatable-http`,
+- a **Livewire table** (`WithDataTable`) with plain, framework-free Blade
+  markup.
+
+It is general-purpose: it needs Laravel 12 or 13 and PHP 8.2+, nothing else.
+Livewire 4 is only needed for the Livewire table. No CSS framework or UI kit
+is required.
+
+```bash
+composer require acunsoft/datatable-laravel
+```
+
+## JSON endpoint
 
 ```php
 use Acunsoft\DataTable\Laravel\Column;
@@ -24,6 +37,87 @@ Route::get('/orders/data', function () {
 The browser side: `createHttpDataSource({ url: '/orders/data' })` (it sends the
 wire format below and reads `{ rows, totalRows }`).
 
+## Livewire table
+
+```php
+use Acunsoft\DataTable\Laravel\Column;
+use Acunsoft\DataTable\Laravel\Livewire\WithDataTable;
+use Illuminate\Database\Eloquent\Builder;
+use Livewire\Component;
+
+final class OrdersTable extends Component
+{
+    use WithDataTable;
+
+    protected function columns(): array
+    {
+        return [
+            Column::make('customer')->header('Müşteri')->sortable()->filterable()->searchUsing('customer_search'),
+            Column::make('total')->header('Tutar')->type('decimal')->sortable()->filterable()
+                ->format(fn ($value) => number_format((float) $value, 2, ',', '.').' ₺'),
+            Column::make('created')->column('created_at')->header('Tarih')->type('datetime')->sortable(),
+        ];
+    }
+
+    protected function query(): Builder
+    {
+        return Order::query()->whereBelongsTo(auth()->user()->team); // the rows this user may see
+    }
+
+    protected function selectable(): bool { return true; }       // optional
+}
+```
+
+```blade
+<livewire:orders-table />
+```
+
+What you get:
+
+- **Search, sorting, filters and page size in the URL**, with the same names as
+  the HTTP wire format: `?search=ayse&sort=total:desc&filters[0][field]=…&pageSize=50&page=2`.
+  Links and the back button work. One table per page (names are not prefixed).
+- **Sorting:** a header click cycles ascending → descending → none;
+  **Shift**+click adds a column to a multi-column sort. The primary sorted
+  header gets `aria-sort`.
+- **Filters** from your own controls: `wire:click="setFilter('total', 'gt', '100')"`,
+  `removeFilter($index)`, `clearFilters()`. Same operators and rules as above.
+- **Selection** (`selectable()`): row checkboxes, a page checkbox (tri-state),
+  "select all N matching rows", and `$this->selectedQuery()` for bulk actions:
+  `$this->selectedQuery()->update(['status' => 'archived'])`. A new search or
+  filter clears the selection.
+- **Pagination** with Previous/Next, `Page 2 of 7 · 160 rows` and a rows-per-page
+  select (`pageSizeOptions()`, default `[10, 25, 50, 100]`).
+- **Cell text** from `Column::format(fn ($value, $row) => '…')` or a locale-aware
+  default (numbers, decimals with their scale, dates, `Yes`/`No`). Everything is
+  printed escaped with `{{ }}`: a formatter returns text, never HTML.
+- **Texts** in English and Turkish, following `app()->getLocale()`
+  (`acun-datatable::table.*`; publish with `--tag=acun-datatable-lang`).
+
+**Safety.** All state from the browser is treated as untrusted. URL state that
+does not fit the columns (unknown or non-sortable fields, bad values, a page
+size that is not an option, a page past the end) is dropped or corrected
+instead of failing the page. Selected keys are only looked up inside `query()`,
+so a forged key cannot reach rows outside it; "all matching" and the excluded
+keys are `#[Locked]`. Helper methods are `protected`, so the browser can only
+call the actions listed above. Authorize in `query()` or `mount()` as usual.
+
+**Markup and styling.** The view is plain Blade with the class names of
+`@acunsoft/datatable-dom` (`adt-table`, `adt-sort`, `adt-pagination`, …), so
+its optional stylesheet styles both. Include it from npm
+(`@acunsoft/datatable-dom/styles.css`) or style the classes yourself. To
+change the markup, publish the view:
+
+```bash
+php artisan vendor:publish --tag=acun-datatable-views
+```
+
+or give your component its own `render()` and `@include('acun-datatable::livewire.table')`
+inside your layout. Override `caption()`, `pageSizeOptions()`, `maxSelected()`
+(explicit keys, default 1000), `rowLabel($row)` (the checkbox name for screen
+readers, default the first column's text) and `keyName()` (query-builder tables)
+as needed.
+
 ## Columns are the allowlist
 
 `Column::make($id)` declares what a client may use; nothing else reaches SQL.
@@ -36,6 +130,7 @@ wire format below and reads `{ rows, totalRows }`).
 | `searchable(false)` | keep a filterable column out of the global search |
 | `searchUsing('customer_search')` | match search and `contains`/`startsWith` against a folded copy (see below) |
 | `header('Müşteri')` | display text (used by the Livewire views) |
+| `format(fn ($value, $row) => '…')` | cell text in the Livewire views (plain text, escaped) |
 
 Unknown, undeclared or not-allowed fields and malformed values throw
 `InvalidTableQuery`; `TableResponse` answers HTTP 422 `{ message, errors }`.
@@ -94,4 +189,5 @@ composer install && composer test
 ```
 
 PHPUnit + Orchestra Testbench on SQLite, with the same folding and
-search-splitting vectors as the TypeScript core.
+search-splitting vectors as the TypeScript core, and Livewire component tests
+for sorting, filters, tampered URL state, selection scope and escaping.

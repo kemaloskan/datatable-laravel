@@ -1,29 +1,53 @@
 {
     "name": "acunsoft/datatable-laravel",
-    "description": "Server side for Acun DataTable: an allowlisted, Turkish-aware Eloquent query applier and a JSON endpoint for the HTTP data source.",
+    "description": "Laravel and Livewire for Acun DataTable: an allowlisted, Turkish-aware Eloquent query layer, a JSON endpoint for the HTTP data source and a Livewire table trait with accessible Blade views.",
     "type": "library",
     "license": "MIT",
-    "keywords": ["laravel", "eloquent", "datatable", "acun-datatable"],
+    "keywords": [
+        "laravel",
+        "eloquent",
+        "datatable",
+        "acun-datatable"
+    ],
     "require": {
         "php": "^8.2",
         "illuminate/database": "^12.0 || ^13.0",
         "illuminate/http": "^12.0 || ^13.0",
-        "illuminate/support": "^12.0 || ^13.0"
+        "illuminate/support": "^12.0 || ^13.0",
+        "illuminate/view": "^12.0 || ^13.0"
     },
     "require-dev": {
+        "livewire/livewire": "^4.0",
         "orchestra/testbench": "^10.0 || ^11.0",
         "phpunit/phpunit": "^11.0 || ^12.0"
     },
+    "suggest": {
+        "livewire/livewire": "^4.0 — for the WithDataTable Livewire trait and its views",
+        "ext-intl": "for locale-aware number and date text and exact accent folding"
+    },
     "autoload": {
-        "psr-4": { "Acunsoft\\DataTable\\Laravel\\": "src/" }
+        "psr-4": {
+            "Acunsoft\\DataTable\\Laravel\\": "src/"
+        }
     },
     "autoload-dev": {
-        "psr-4": { "Acunsoft\\DataTable\\Laravel\\Tests\\": "tests/" }
+        "psr-4": {
+            "Acunsoft\\DataTable\\Laravel\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Acunsoft\\DataTable\\Laravel\\DataTableServiceProvider"
+            ]
+        }
     },
     "scripts": {
         "test": "phpunit"
     },
-    "config": { "sort-packages": true },
+    "config": {
+        "sort-packages": true
+    },
     "minimum-stability": "stable",
     "prefer-stable": true
 }
