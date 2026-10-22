@@ -3,6 +3,18 @@
     "description": "Laravel and Livewire for Acun DataTable: an allowlisted, Turkish-aware Eloquent query layer, a JSON endpoint for the HTTP data source and a Livewire table trait with accessible Blade views.",
     "type": "library",
     "license": "MIT",
+    "homepage": "https://kemaloskan.github.io/acun-datatable/",
+    "authors": [
+        {
+            "name": "Kemal OSKAN",
+            "homepage": "https://github.com/kemaloskan"
+        }
+    ],
+    "support": {
+        "issues": "https://github.com/kemaloskan/acun-datatable/issues",
+        "source": "https://github.com/kemaloskan/datatable-laravel",
+        "docs": "https://kemaloskan.github.io/acun-datatable/#/laravel"
+    },
     "keywords": [
         "laravel",
         "eloquent",

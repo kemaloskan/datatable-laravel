@@ -1,0 +1,4 @@
+# Keep `composer require` downloads small: tests are not shipped.
+/tests export-ignore
+/phpunit.xml export-ignore
+/.gitattributes export-ignore
