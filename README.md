@@ -94,6 +94,19 @@ What you get:
 - **Texts** in English and Turkish, following `app()->getLocale()`
   (`acun-datatable::table.*`; publish with `--tag=acun-datatable-lang`).
 
+### Column visibility
+
+A "Columns" menu (native `<details>`, one checkbox per column) lets users hide
+columns; the hidden IDs are kept in the URL (`hidden[]=note`).
+
+```php
+Column::make('customer')->hideable(false),   // always shown
+Column::make('note')->hidden(),               // hidden until the user shows it
+```
+
+Hidden columns still sort, filter and search. Unknown or protected IDs in the
+URL are ignored, and at least one column always stays visible.
+
 ### Row and bulk actions
 
 ```php
@@ -170,6 +183,7 @@ as needed.
 | `searchUsing('customer_search')` | match search and `contains`/`startsWith` against a folded copy (see below) |
 | `header('Müşteri')` | display text (used by the Livewire views) |
 | `format(fn ($value, $row) => '…')` | cell text in the Livewire views (plain text, escaped) |
+| `hideable(false)` / `hidden()` | Livewire column menu: never hidden / hidden at first |
 
 Unknown, undeclared or not-allowed fields and malformed values throw
 `InvalidTableQuery`; `TableResponse` answers HTTP 422 `{ message, errors }`.

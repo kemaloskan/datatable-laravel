@@ -19,4 +19,6 @@ return [
     'actions' => 'İşlemler',
     'row_action' => ':name: :action',
     'bulk_actions' => 'Seçili satırlar',
+    'columns' => 'Kolonlar',
+    'show_columns' => 'Gösterilecek kolonlar',
 ];

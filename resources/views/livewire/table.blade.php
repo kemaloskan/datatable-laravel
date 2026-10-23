@@ -5,13 +5,16 @@
   Publish with `php artisan vendor:publish --tag=acun-datatable-views` to change it.
 --}}
 @php
-    $columns = $this->dataTableColumns();
+    $allColumns = $this->dataTableColumns();
+    $columns = $this->dataTableVisibleColumns();
+    $hiddenIds = $this->hiddenColumnIds();
+    $toggleable = count($allColumns) > 1 && collect($allColumns)->contains(fn ($column) => $column->isHideable());
     $rows = $this->rows;
     $sorting = $this->sorting();
     $selectable = $this->selectable();
     $pageSelection = $selectable ? $this->pageSelection() : 'none';
     $selectedCount = $selectable ? $this->selectedCount() : 0;
-    $hasSearch = collect($columns)->contains(fn ($column) => $column->isSearchable());
+    $hasSearch = collect($allColumns)->contains(fn ($column) => $column->isSearchable());
     $sizes = $this->pageSizeOptions();
     $rowActions = $this->dataTableRowActions();
     $bulkActions = $selectable ? $this->dataTableBulkActions() : [];
@@ -26,6 +29,25 @@
                 <input type="search" wire:model.live.debounce.300ms="search" autocomplete="off">
             </label>
         </div>
+    @endif
+
+    @if ($toggleable)
+        <details class="adt-columns">
+            <summary>{{ __('acun-datatable::table.columns') }}</summary>
+            <fieldset>
+                <legend>{{ __('acun-datatable::table.show_columns') }}</legend>
+                @foreach ($allColumns as $column)
+                    @php $shown = ! in_array($column->id(), $hiddenIds, true); @endphp
+                    <label>
+                        <input type="checkbox" value="{{ $column->id() }}"
+                            wire:click="toggleColumn({{ \Illuminate\Support\Js::from($column->id()) }})"
+                            @checked($shown)
+                            @disabled(! $column->isHideable() || ($shown && count($columns) === 1))>
+                        <span>{{ $column->headerText() }}</span>
+                    </label>
+                @endforeach
+            </fieldset>
+        </details>
     @endif
 
     @if ($selectable && $selectedCount > 0)

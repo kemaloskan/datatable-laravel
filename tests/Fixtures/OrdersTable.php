@@ -20,11 +20,11 @@ final class OrdersTable extends Component
     protected function columns(): array
     {
         return [
-            Column::make('customer')->header('Customer')->sortable()->filterable()->searchUsing('customer_search'),
+            Column::make('customer')->header('Customer')->sortable()->filterable()->searchUsing('customer_search')->hideable(false),
             Column::make('city')->header('City')->sortable()->filterable(),
             Column::make('total')->header('Total')->type('decimal')->sortable()->filterable(),
             Column::make('active')->header('Active')->type('boolean')->filterable()->searchable(false),
-            Column::make('created')->column('created_at')->header('Created')->type('datetime')->sortable()->filterable()->searchable(false),
+            Column::make('created')->column('created_at')->header('Created')->type('datetime')->sortable()->filterable()->searchable(false)->hidden(),
             Column::make('note')->header('Note')->format(fn ($value) => $value === null ? '—' : (string) $value),
         ];
     }

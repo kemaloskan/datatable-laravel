@@ -52,6 +52,10 @@ trait WithDataTable
     #[Url(except: 25)]
     public int $pageSize = 25;
 
+    /** @var array<int, mixed> IDs of hidden columns (presentation only: they still sort, filter and search) */
+    #[Url(as: 'hidden', except: [])]
+    public array $hiddenColumns = [];
+
     /** @var array<int, mixed> keys of explicitly selected rows */
     public array $selected = [];
 
@@ -167,6 +171,54 @@ trait WithDataTable
     protected function sorting(): array
     {
         return $this->dataTableQuery()->sorting;
+    }
+
+    /** Apply `Column::hidden()` unless the URL already says which columns are hidden. */
+    public function mountWithDataTable(): void
+    {
+        if ($this->hiddenColumns === []) {
+            $this->hiddenColumns = array_values(array_map(
+                fn (Column $column) => $column->id(),
+                array_filter($this->dataTableColumns(), fn (Column $column) => $column->isHiddenByDefault()),
+            ));
+        }
+    }
+
+    // Column visibility ----------------------------------------------------
+
+    /** Show or hide a column; one column always stays visible. */
+    public function toggleColumn(string $id): void
+    {
+        $column = $this->dataTableColumn($id);
+        if ($column === null || ! $column->isHideable()) {
+            return;
+        }
+        $hidden = $this->hiddenColumnIds();
+        $next = in_array($id, $hidden, true) ? array_values(array_diff($hidden, [$id])) : [...$hidden, $id];
+        if (count($next) < count($this->dataTableColumns())) {
+            $this->hiddenColumns = $next;
+        }
+    }
+
+    /** @return list<Column> the columns to show, in declaration order */
+    protected function dataTableVisibleColumns(): array
+    {
+        $hidden = $this->hiddenColumnIds();
+
+        return array_values(array_filter($this->dataTableColumns(), fn (Column $column) => ! in_array($column->id(), $hidden, true)));
+    }
+
+    /** @return list<string> valid hidden IDs: known, hideable, never all of them */
+    protected function hiddenColumnIds(): array
+    {
+        $hidden = [];
+        foreach ($this->dataTableColumns() as $column) {
+            if ($column->isHideable() && in_array($column->id(), $this->hiddenColumns, true)) {
+                $hidden[] = $column->id();
+            }
+        }
+
+        return count($hidden) >= count($this->dataTableColumns()) ? [] : $hidden;
     }
 
     // Sorting --------------------------------------------------------------

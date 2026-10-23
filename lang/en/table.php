@@ -19,4 +19,6 @@ return [
     'actions' => 'Actions',
     'row_action' => ':action: :name',
     'bulk_actions' => 'Selected rows',
+    'columns' => 'Columns',
+    'show_columns' => 'Show columns',
 ];

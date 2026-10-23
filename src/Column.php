@@ -26,6 +26,8 @@ final class Column
     private ?bool $searchable = null;
     private ?string $searchColumn = null;
     private ?Closure $formatter = null;
+    private bool $hideable = true;
+    private bool $hidden = false;
 
     private function __construct(private readonly string $id)
     {
@@ -99,7 +101,21 @@ final class Column
         return $this->with('formatter', $formatter);
     }
 
+    /** Whether users may hide the column in the Livewire view. Default true. */
+    public function hideable(bool $hideable = true): self
+    {
+        return $this->with('hideable', $hideable);
+    }
+
+    /** Hidden until the user shows it (Livewire). It still sorts, filters and searches. */
+    public function hidden(bool $hidden = true): self
+    {
+        return $this->with('hidden', $hidden);
+    }
+
     public function formatter(): ?Closure { return $this->formatter; }
+    public function isHideable(): bool { return $this->hideable; }
+    public function isHiddenByDefault(): bool { return $this->hidden && $this->hideable; }
     public function id(): string { return $this->id; }
     public function databaseColumn(): string { return $this->column; }
     public function headerText(): string { return $this->header; }
