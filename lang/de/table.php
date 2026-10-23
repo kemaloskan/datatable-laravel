@@ -52,4 +52,7 @@ return [
     'file_encrypted' => 'Passwortgeschützte Dateien werden nicht unterstützt.',
     'sheet_not_found' => 'Arbeitsblatt „:name“ nicht gefunden.',
     'export_too_large' => 'Der Export umfasst mehr als :max Zeilen; bitte die Filter einschränken.',
+    'page_status_many' => 'Seite :page · :total+ Einträge',
+    'select_matching_many' => 'Alle :total+ passenden Einträge auswählen',
+    'selected_many' => ':count+ ausgewählt',
 ];

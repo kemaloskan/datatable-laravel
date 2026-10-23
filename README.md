@@ -275,6 +275,82 @@ protected static function booted(): void
 Column::make('customer')->sortable()->filterable()->searchUsing('customer_search');
 ```
 
+## Large tables (millions of rows)
+
+The browser only ever holds one page, so table size is a database question.
+These defaults keep requests fast; the numbers are medians measured on
+**5,000,000 rows in PostgreSQL 17** (Apple M2, 25 rows per page, count + page):
+
+| One request (count + page) | Before 0.3 | 0.3 defaults | + recommended indexes |
+|---|---|---|---|
+| First page, sorted by date | 52.8 ms | 1.4 ms | 1.1 ms |
+| One month of dates | 373.3 ms | 1.7 ms | 1.7 ms |
+| Status filter, sorted by amount | 27.9 ms | 1.3 ms | 1.4 ms |
+| Search "ayse" | 3,480 ms | 79.4 ms | 22.4 ms |
+| Search "istanbul" | 3,497 ms | 42.3 ms | 13.2 ms |
+| Search "ayse istanbul" | 3,737 ms | 824.6 ms | 68.2 ms |
+| Search with no match | > 2,413 ms | 2,170 ms | 0.4 ms |
+| Page 2,000 | 136.8 ms | 82.1 ms | 79.6 ms |
+| Page 100,000 | 4,199 ms | refused (result window) | refused |
+
+"Recommended indexes": a folded copy of each searchable text column with a
+GIN trigram index (step 2 below).
+
+What the package does for you:
+
+- **Bounded counts.** At most 10,000 matches are counted; beyond that the
+  table says "10,000+" (Livewire) or sends `totalRowsAtLeast` instead of
+  `totalRows` (JSON), and "next page" comes from fetching one extra row.
+  `countLimit(null)` (TableResponse) or `countLimit(): ?int` (Livewire)
+  restores exact counts.
+- **Result window.** Pages that start past 100,000 rows are refused (422) or,
+  in Livewire, clamped. Deep `OFFSET`s read and throw away millions of rows;
+  sort the other way or filter instead. `maxResultWindow(null)` removes it.
+- **Index-friendly dates.** A day is a range `[00:00, next day 00:00)` on the
+  bare column, never `DATE(column)`, so the column's index is used.
+- **Index-friendly sorting.** The primary-key tie-breaker follows the last
+  sort direction, so an index on `(sorted_column, id)` covers the whole
+  `ORDER BY`.
+- **Search only where a word can be.** Letters are never looked for in
+  amounts, dates or yes/no columns; numbers and dates are compared as text
+  without folding.
+
+What you do:
+
+1. **Index what users sort and filter by**, together with the key:
+   `$table->index(['ordered_at', 'id']); $table->index(['status', 'id']);`
+   Only mark indexed columns `sortable()`.
+2. **Searchable text: a folded copy plus a trigram index.** `%term%` cannot use
+   a normal index, and folding in SQL costs time on every row. Store the folded
+   text once and index it:
+
+   ```php
+   // migration (PostgreSQL)
+   $table->string('customer_search');
+   DB::statement('CREATE EXTENSION IF NOT EXISTS pg_trgm');
+   DB::statement('CREATE INDEX orders_customer_trgm ON orders USING gin (customer_search gin_trgm_ops)');
+
+   // model
+   use Acunsoft\DataTable\Laravel\Concerns\FoldsSearchColumns;
+
+   protected function foldedSearchColumns(): array
+   {
+       return ['customer' => 'customer_search', 'city' => 'city_search'];
+   }
+
+   // column
+   Column::make('customer')->sortable()->filterable()->searchUsing('customer_search'),
+   ```
+
+   On MySQL use a `FULLTEXT` index with the ngram parser, or a search engine.
+   Add the column **before** loading data. On an existing large table do not
+   fill it with one `UPDATE`: that rewrites every row in every index (it ran
+   for hours on 5M rows). Build a new table with `CREATE TABLE … AS SELECT`
+   and swap it in (37 s for 5M rows), or update in batches by primary key.
+3. **Beyond a few million searchable rows, use a search engine**
+   (Meilisearch, Typesense or OpenSearch through Laravel Scout) for the text
+   search, and keep filters, sorting and paging in the database.
+
 ## Export on the server: `TableExport`
 
 ```php

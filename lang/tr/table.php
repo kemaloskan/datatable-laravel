@@ -52,4 +52,7 @@ return [
     'file_encrypted' => 'Parola korumalı dosyalar desteklenmiyor.',
     'sheet_not_found' => '":name" çalışma sayfası bulunamadı.',
     'export_too_large' => 'Dışa aktarma :max satırı aşıyor; filtreleri daraltın.',
+    'page_status_many' => 'Sayfa :page · :total+ kayıt',
+    'select_matching_many' => 'Eşleşen :total+ kaydın tümünü seç',
+    'selected_many' => ':count+ seçili',
 ];

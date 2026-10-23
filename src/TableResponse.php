@@ -32,6 +32,8 @@ final class TableResponse implements Responsable
     private int $maxPageSize = 100;
     private int $defaultPageSize = 25;
     private ?Closure $transform = null;
+    private ?int $countLimit = 10_000;
+    private ?int $maxResultWindow = 100_000;
 
     private function __construct(private readonly EloquentBuilder|QueryBuilder $builder)
     {
@@ -61,6 +63,32 @@ final class TableResponse implements Responsable
         return $this;
     }
 
+    /**
+     * Count at most this many matches (default 10,000). Beyond it `totalRows`
+     * is left out (the browser shows "Page 5") and `totalRowsAtLeast` is sent.
+     * `null` counts every match, which is slow on large tables.
+     */
+    public function countLimit(?int $limit): self
+    {
+        if ($limit !== null && $limit < 1) {
+            throw new \InvalidArgumentException('The count limit must be at least 1, or null.');
+        }
+        $this->countLimit = $limit;
+
+        return $this;
+    }
+
+    /** Refuse pages starting past this many rows (default 100,000; `null`: no limit). Answers 422. */
+    public function maxResultWindow(?int $rows): self
+    {
+        if ($rows !== null && $rows < 1) {
+            throw new \InvalidArgumentException('The result window must be at least 1, or null.');
+        }
+        $this->maxResultWindow = $rows;
+
+        return $this;
+    }
+
     /** @param Closure(mixed $row): array<string, mixed> $transform e.g. fn ($order) => new OrderResource($order) */
     public function transform(Closure $transform): self
     {
@@ -74,14 +102,16 @@ final class TableResponse implements Responsable
     {
         try {
             $query = TableQuery::fromRequest($request, $this->maxPageSize, $this->defaultPageSize);
-            $page = QueryApplier::paginate($this->builder, $query, $this->columns);
+            $page = QueryApplier::paginate($this->builder, $query, $this->columns, $this->countLimit, $this->maxResultWindow);
         } catch (InvalidTableQuery $error) {
             return new JsonResponse(['message' => $error->getMessage(), 'errors' => $error->errors], 422);
         }
 
         $rows = array_map(fn ($row) => $this->row($row), $page->items());
 
-        return new JsonResponse(['rows' => $rows, 'totalRows' => $page->total()]);
+        return new JsonResponse($page->totalIsExact()
+            ? ['rows' => $rows, 'totalRows' => $page->total()]
+            : ['rows' => $rows, 'totalRowsAtLeast' => $page->total() + 1]);
     }
 
     /** @return array<string, mixed> */

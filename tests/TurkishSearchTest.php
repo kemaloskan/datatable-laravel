@@ -44,6 +44,21 @@ final class TurkishSearchTest extends TestCase
         self::assertSame([], $this->cities(['filters' => [['field' => 'note', 'op' => 'contains', 'value' => '5_%']]]));
     }
 
+    public function test_words_only_search_columns_whose_text_could_contain_them(): void
+    {
+        $columns = [Column::make('customer')->sortable()->filterable()->searchUsing('customer_search'), Column::make('total')->type('decimal')->filterable(),
+            Column::make('created')->column('created_at')->type('datetime')->filterable(), Column::make('active')->type('boolean')->filterable()];
+        $search = fn (string $text) => QueryApplier::apply(Order::query(), TableQuery::fromArray(['search' => $text, 'sort' => 'customer:asc']), $columns);
+        self::assertSame(['Ayşe Yılmaz'], $search('120')->pluck('customer')->all()); // 120.50
+        self::assertSame(['Ayşe Yılmaz', 'Can Öztürk'], $search('2026-10-23')->pluck('customer')->all());
+        $sql = $search('ayse')->toSql();
+        self::assertStringContainsString('customer_search', $sql);
+        self::assertStringNotContainsString('"total"', $sql); // letters never appear in an amount or a date
+        self::assertStringNotContainsString('"created_at"', $sql);
+        $numbersOnly = [Column::make('total')->type('decimal')->filterable()];
+        self::assertSame(0, QueryApplier::apply(Order::query(), TableQuery::fromArray(['search' => 'ayse']), $numbersOnly)->count());
+    }
+
     public function test_other_databases_get_a_lower_replace_chain_and_keep_the_collation_match(): void
     {
         $columns = [Column::make('city')->filterable()];

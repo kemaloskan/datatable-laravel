@@ -52,4 +52,7 @@ return [
     'file_encrypted' => 'No se admiten archivos protegidos con contraseña.',
     'sheet_not_found' => 'No se encontró la hoja «:name».',
     'export_too_large' => 'La exportación supera las :max filas; restrinja los filtros.',
+    'page_status_many' => 'Página :page · :total+ filas',
+    'select_matching_many' => 'Seleccionar las :total+ filas coincidentes',
+    'selected_many' => ':count+ seleccionadas',
 ];

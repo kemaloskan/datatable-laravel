@@ -80,6 +80,21 @@ trait WithDataTable
         return [10, 25, 50, 100];
     }
 
+    /**
+     * Count at most this many matches (default 10,000); beyond it the view shows
+     * "10,000+" instead of an exact total. `null` counts everything.
+     */
+    protected function countLimit(): ?int
+    {
+        return 10_000;
+    }
+
+    /** Pages start at most this many rows deep (default 100,000; `null`: no limit). */
+    protected function maxResultWindow(): ?int
+    {
+        return 100_000;
+    }
+
     /** Explicitly selected keys are limited; "all matching" selection has no limit. */
     protected function maxSelected(): int
     {
@@ -167,11 +182,12 @@ trait WithDataTable
     public function rows(): LengthAwarePaginator
     {
         $query = $this->dataTableQuery();
-        $rows = QueryApplier::paginate($this->query(), $query, $this->dataTableColumns());
+        $page = fn () => QueryApplier::paginate($this->query(), $this->dataTableQuery(), $this->dataTableColumns(), $this->countLimit(), $this->maxResultWindow());
+        $rows = $page();
         if ($rows->isEmpty() && $query->page > 1 && $rows->total() > 0) {
             // The page is past the end (rows were deleted, or the URL was edited): show the last one.
-            $this->setPage($rows->lastPage());
-            $rows = QueryApplier::paginate($this->query(), $this->dataTableQuery(), $this->dataTableColumns());
+            $this->setPage($rows->totalIsExact() ? $rows->lastPage() : 1);
+            $rows = $page();
         }
 
         return $rows;
@@ -395,9 +411,18 @@ trait WithDataTable
         $this->selected = [];
     }
 
+    /** The selection size; for "all matching" a bounded count (see selectionSize()). */
     protected function selectedCount(): int
     {
-        return $this->allMatching ? $this->selectedQuery()->count() : count($this->selectedKeys());
+        return $this->selectionSize()[0];
+    }
+
+    /** @return array{0: int, 1: bool} the selection size and whether it is exact */
+    protected function selectionSize(): array
+    {
+        return $this->allMatching
+            ? QueryApplier::count($this->selectedQuery(), $this->countLimit())
+            : [count($this->selectedKeys()), true];
     }
 
     /**
@@ -562,7 +587,7 @@ trait WithDataTable
         $page = is_int($page) || (is_string($page) && ctype_digit($page)) ? (int) $page : 1;
 
         return TableQuery::fromArray([
-            'page' => min(max($page, 1), TableQuery::MAX_PAGE),
+            'page' => min(max($page, 1), TableQuery::MAX_PAGE, $this->maxResultWindow() === null ? TableQuery::MAX_PAGE : max(1, intdiv($this->maxResultWindow() - 1, $pageSize) + 1)),
             'pageSize' => $pageSize,
             'sort' => implode(',', array_slice($sort, 0, TableQuery::MAX_SORT_RULES)),
             'filters' => $filters,

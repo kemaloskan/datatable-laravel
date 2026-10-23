@@ -52,4 +52,7 @@ return [
     'file_encrypted' => 'Password-protected files are not supported.',
     'sheet_not_found' => 'Worksheet ":name" not found.',
     'export_too_large' => 'The export has more than :max rows; narrow the filters.',
+    'page_status_many' => 'Page :page · :total+ rows',
+    'select_matching_many' => 'Select all :total+ matching rows',
+    'selected_many' => ':count+ selected',
 ];

@@ -52,4 +52,7 @@ return [
     'file_encrypted' => 'Les fichiers protégés par mot de passe ne sont pas pris en charge.',
     'sheet_not_found' => 'Feuille « :name » introuvable.',
     'export_too_large' => 'L\'export dépasse :max lignes ; affinez les filtres.',
+    'page_status_many' => 'Page :page · :total+ lignes',
+    'select_matching_many' => 'Sélectionner les :total+ lignes correspondantes',
+    'selected_many' => ':count+ sélectionnées',
 ];

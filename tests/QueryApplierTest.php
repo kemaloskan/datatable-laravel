@@ -99,8 +99,11 @@ final class QueryApplierTest extends TestCase
         // Two columns: inactive first, then the highest total within each group.
         self::assertSame(['Iğdır Ticaret', 'Ali Kaya', 'Ayşe Yılmaz', 'Can Öztürk', 'Deniz Şahin'],
             $this->customers(['sort' => 'active:asc,total:desc']));
-        $sql = QueryApplier::apply(Order::query(), TableQuery::fromArray(['sort' => 'total:desc']), $this->columns())->toSql();
-        self::assertStringContainsString('order by "total" desc, "orders"."id" asc', $sql);
+        // The key follows the last rule's direction, so an index on (total, id) serves the whole ORDER BY.
+        $sql = fn (string $sort) => QueryApplier::apply(Order::query(), TableQuery::fromArray(['sort' => $sort]), $this->columns())->toSql();
+        self::assertStringContainsString('order by "total" desc, "orders"."id" desc', $sql('total:desc'));
+        self::assertStringContainsString('order by "active" asc, "total" desc, "orders"."id" desc', $sql('active:asc,total:desc'));
+        self::assertStringEndsWith('order by "orders"."id" asc', QueryApplier::apply(Order::query(), TableQuery::fromArray([]), $this->columns())->toSql());
     }
 
     public function test_only_declared_and_allowed_columns_reach_the_query(): void
