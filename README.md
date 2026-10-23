@@ -320,6 +320,11 @@ What you do:
 1. **Index what users sort and filter by**, together with the key:
    `$table->index(['ordered_at', 'id']); $table->index(['status', 'id']);`
    Only mark indexed columns `sortable()`.
+   For filters that are used **together**, add one index with the equality
+   column first and the range column after it:
+   `$table->index(['status', 'ordered_at', 'id']);` On 5M rows, "paid in
+   the last month" then counts from the index alone: 1,373 ms → 19 ms per
+   request. Check slow combinations with `EXPLAIN ANALYZE`.
 2. **Searchable text: a folded copy plus a trigram index.** `%term%` cannot use
    a normal index, and folding in SQL costs time on every row. Store the folded
    text once and index it:
