@@ -71,14 +71,14 @@
 
     @if ($selectable && $selectedCount > 0)
         <div class="adt-selection" role="group" aria-label="{{ __('acun-datatable::table.bulk_actions') }}">
-            <span class="adt-selection-count" role="status">{{ __('acun-datatable::table.selected', ['count' => $selectedCount]) }}</span>
+            <span class="adt-selection-count" role="status">{{ trans_choice('acun-datatable::table.selected', $selectedCount, ['count' => \Acunsoft\DataTable\Laravel\Support\Format::count($selectedCount)]) }}</span>
             @foreach ($bulkActions as $action)
                 <button type="button" class="adt-bulk-action" data-action="{{ $action->id() }}"
                     wire:click="runBulkAction({{ \Illuminate\Support\Js::from($action->id()) }})"
                     @if ($action->confirmText() !== null) wire:confirm="{{ $action->confirmText() }}" @endif>{{ $action->labelText() }}</button>
             @endforeach
             @if (! $this->allMatching && $rows->total() > $selectedCount)
-                <button type="button" wire:click="selectAllMatching">{{ __('acun-datatable::table.select_matching', ['total' => $rows->total()]) }}</button>
+                <button type="button" wire:click="selectAllMatching">{{ trans_choice('acun-datatable::table.select_matching', $rows->total(), ['total' => \Acunsoft\DataTable\Laravel\Support\Format::count($rows->total())]) }}</button>
             @endif
             <button type="button" class="adt-clear-selection" wire:click="clearSelection">{{ __('acun-datatable::table.clear_selection') }}</button>
         </div>
@@ -170,7 +170,7 @@
     <nav class="adt-pagination" aria-label="{{ __('acun-datatable::table.pagination') }}">
         <button type="button" class="adt-previous"
             @if ($rows->onFirstPage()) aria-disabled="true" @else wire:click="previousPage" @endif>{{ __('acun-datatable::table.previous') }}</button>
-        <span class="adt-status" aria-live="polite">{{ __('acun-datatable::table.page_status', ['page' => $rows->currentPage(), 'pages' => max($rows->lastPage(), 1), 'total' => $rows->total()]) }}</span>
+        <span class="adt-status" aria-live="polite">{{ trans_choice('acun-datatable::table.page_status', $rows->total(), ['page' => \Acunsoft\DataTable\Laravel\Support\Format::count($rows->currentPage()), 'pages' => \Acunsoft\DataTable\Laravel\Support\Format::count(max($rows->lastPage(), 1)), 'total' => \Acunsoft\DataTable\Laravel\Support\Format::count($rows->total())]) }}</span>
         <button type="button" class="adt-next"
             @if ($rows->hasMorePages()) wire:click="nextPage" @else aria-disabled="true" @endif>{{ __('acun-datatable::table.next') }}</button>
         <label class="adt-page-size">

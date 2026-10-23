@@ -32,6 +32,12 @@ final class Format
         return self::value($value, $column->valueType());
     }
 
+    /** A count in the locale's digit grouping: 1,600 (en), 1.600 (tr, de), 1 600 (fr). */
+    public static function count(int $count, ?string $locale = null): string
+    {
+        return self::number((float) $count, 0, $locale ?? app()->getLocale());
+    }
+
     public static function value(mixed $value, ?string $type, ?string $locale = null): string
     {
         $locale ??= app()->getLocale();

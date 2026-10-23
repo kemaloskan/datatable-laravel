@@ -91,7 +91,9 @@ What you get:
 - **Cell text** from `Column::format(fn ($value, $row) => '…')` or a locale-aware
   default (numbers, decimals with their scale, dates, `Yes`/`No`). Everything is
   printed escaped with `{{ }}`: a formatter returns text, never HTML.
-- **Texts** in English and Turkish, following `app()->getLocale()`
+- **Texts** in English, Turkish, German, French and Spanish, following
+  `app()->getLocale()` (other locales fall back to `app.fallback_locale`), with
+  singular and plural forms and the locale's digit grouping
   (`acun-datatable::table.*`; publish with `--tag=acun-datatable-lang`).
 
 ### Column visibility

@@ -14,9 +14,9 @@
 
     @if ($importReport !== null)
         <div class="adt-import-report" role="status">
-            <p>{{ __('acun-datatable::table.import_done', ['count' => $importReport['imported']]) }}</p>
+            <p>{{ trans_choice('acun-datatable::table.import_done', $importReport['imported'], ['count' => \Acunsoft\DataTable\Laravel\Support\Format::count($importReport['imported'])]) }}</p>
             @if ($importReport['problems'] > 0)
-                <p>{{ __('acun-datatable::table.import_problems', ['count' => $importReport['problems']]) }}</p>
+                <p>{{ trans_choice('acun-datatable::table.import_problems', $importReport['problems'], ['count' => \Acunsoft\DataTable\Laravel\Support\Format::count($importReport['problems'])]) }}</p>
                 <ul>
                     @foreach ($importReport['errors'] as $problem)
                         <li>{{ __('acun-datatable::table.import_line', ['line' => $problem['line']]) }} · {{ ($importHeaders[$problem['column']] ?? $problem['column']).($problem['value'] !== '' ? ' · “'.$problem['value'].'”' : '') }}: {{ $problem['message'] }}</li>
