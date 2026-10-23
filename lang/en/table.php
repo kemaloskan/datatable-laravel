@@ -16,4 +16,7 @@ return [
     'selected' => ':count selected',
     'select_matching' => 'Select all :total matching rows',
     'clear_selection' => 'Clear selection',
+    'actions' => 'Actions',
+    'row_action' => ':action: :name',
+    'bulk_actions' => 'Selected rows',
 ];

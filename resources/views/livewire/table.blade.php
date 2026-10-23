@@ -13,6 +13,9 @@
     $selectedCount = $selectable ? $this->selectedCount() : 0;
     $hasSearch = collect($columns)->contains(fn ($column) => $column->isSearchable());
     $sizes = $this->pageSizeOptions();
+    $rowActions = $this->dataTableRowActions();
+    $bulkActions = $selectable ? $this->dataTableBulkActions() : [];
+    $span = count($columns) + ($selectable ? 1 : 0) + ($rowActions === [] ? 0 : 1);
     $pageSize = $rows->perPage();
 @endphp
 <div class="adt">
@@ -26,12 +29,17 @@
     @endif
 
     @if ($selectable && $selectedCount > 0)
-        <div class="adt-selection" role="status">
-            <span>{{ __('acun-datatable::table.selected', ['count' => $selectedCount]) }}</span>
+        <div class="adt-selection" role="group" aria-label="{{ __('acun-datatable::table.bulk_actions') }}">
+            <span class="adt-selection-count" role="status">{{ __('acun-datatable::table.selected', ['count' => $selectedCount]) }}</span>
+            @foreach ($bulkActions as $action)
+                <button type="button" class="adt-bulk-action" data-action="{{ $action->id() }}"
+                    wire:click="runBulkAction({{ \Illuminate\Support\Js::from($action->id()) }})"
+                    @if ($action->confirmText() !== null) wire:confirm="{{ $action->confirmText() }}" @endif>{{ $action->labelText() }}</button>
+            @endforeach
             @if (! $this->allMatching && $rows->total() > $selectedCount)
                 <button type="button" wire:click="selectAllMatching">{{ __('acun-datatable::table.select_matching', ['total' => $rows->total()]) }}</button>
             @endif
-            <button type="button" wire:click="clearSelection">{{ __('acun-datatable::table.clear_selection') }}</button>
+            <button type="button" class="adt-clear-selection" wire:click="clearSelection">{{ __('acun-datatable::table.clear_selection') }}</button>
         </div>
     @endif
 
@@ -74,6 +82,9 @@
                                 @endif
                             </th>
                         @endforeach
+                        @if ($rowActions !== [])
+                            <th scope="col" class="adt-th adt-actions">{{ __('acun-datatable::table.actions') }}</th>
+                        @endif
                     </tr>
                 </thead>
                 <tbody>
@@ -91,10 +102,23 @@
                             @foreach ($columns as $column)
                                 <td data-label="{{ $column->headerText() }}">{{ \Acunsoft\DataTable\Laravel\Support\Format::cell($column, $row) }}</td>
                             @endforeach
+                            @if ($rowActions !== [])
+                                <td class="adt-actions" data-label="{{ __('acun-datatable::table.actions') }}">
+                                    @php $name = $this->rowLabel($row); @endphp
+                                    @foreach ($rowActions as $action)
+                                        @if ($action->isVisible($row))
+                                            <button type="button" class="adt-action" data-action="{{ $action->id() }}"
+                                                aria-label="{{ __('acun-datatable::table.row_action', ['action' => $action->labelText(), 'name' => $name]) }}"
+                                                wire:click="runRowAction({{ \Illuminate\Support\Js::from($action->id()) }}, {{ \Illuminate\Support\Js::from($key) }})"
+                                                @if ($action->confirmText() !== null) wire:confirm="{{ $action->confirmText() }}" @endif>{{ $action->labelText() }}</button>
+                                        @endif
+                                    @endforeach
+                                </td>
+                            @endif
                         </tr>
                     @empty
                         <tr class="adt-empty">
-                            <td colspan="{{ count($columns) + ($selectable ? 1 : 0) }}">{{ __('acun-datatable::table.empty') }}</td>
+                            <td colspan="{{ $span }}">{{ __('acun-datatable::table.empty') }}</td>
                         </tr>
                     @endforelse
                 </tbody>

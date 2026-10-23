@@ -94,13 +94,52 @@ What you get:
 - **Texts** in English and Turkish, following `app()->getLocale()`
   (`acun-datatable::table.*`; publish with `--tag=acun-datatable-lang`).
 
+### Row and bulk actions
+
+```php
+use Acunsoft\DataTable\Laravel\Action;
+
+protected function rowActions(): array
+{
+    return [
+        Action::make('edit')->label('Düzenle')
+            ->handle(fn (Order $order) => $this->redirectRoute('orders.edit', $order)),
+        Action::make('delete')->label('Sil')->confirm('Bu sipariş silinsin mi?')
+            ->visible(fn (Order $order) => auth()->user()->can('delete', $order))
+            ->handle(function (Order $order) {
+                $this->authorize('delete', $order);
+                $order->delete();
+            }),
+    ];
+}
+
+protected function bulkActions(): array
+{
+    return [
+        Action::make('archive')->label('Arşivle')->confirm('Seçili siparişler arşivlensin mi?')
+            ->handle(fn (Builder $selected) => $selected->update(['status' => 'archived'])),
+    ];
+}
+```
+
+- A **row action** adds an "Actions" column; its handler receives the row,
+  looked up again inside `query()`, so a forged key cannot reach other rows.
+  `visible()` is checked when rendering **and** before running.
+- A **bulk action** appears in the selection bar; its handler receives the
+  selected rows as a query inside `query()` (also for "all matching" selection).
+  The selection is cleared afterwards.
+- `confirm()` adds `wire:confirm`. Whatever the handler returns (a redirect, a
+  download) goes back to Livewire. Authorize inside the handler; `visible()`
+  only decides what is shown.
+
 **Safety.** All state from the browser is treated as untrusted. URL state that
 does not fit the columns (unknown or non-sortable fields, bad values, a page
 size that is not an option, a page past the end) is dropped or corrected
 instead of failing the page. Selected keys are only looked up inside `query()`,
 so a forged key cannot reach rows outside it; "all matching" and the excluded
 keys are `#[Locked]`. Helper methods are `protected`, so the browser can only
-call the actions listed above. Authorize in `query()` or `mount()` as usual.
+call the actions listed above (plus `runRowAction` and `runBulkAction`, which
+only run actions you declared). Authorize in `query()` or `mount()` as usual.
 
 **Markup and styling.** The view is plain Blade with the class names of
 `@acunsoft/datatable-dom` (`adt-table`, `adt-sort`, `adt-pagination`, …), so

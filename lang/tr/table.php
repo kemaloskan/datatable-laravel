@@ -16,4 +16,7 @@ return [
     'selected' => ':count seçili',
     'select_matching' => 'Eşleşen :total kaydın tümünü seç',
     'clear_selection' => 'Seçimi temizle',
+    'actions' => 'İşlemler',
+    'row_action' => ':name: :action',
+    'bulk_actions' => 'Seçili satırlar',
 ];
