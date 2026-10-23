@@ -18,9 +18,10 @@ use Throwable;
  *
  * - Only declared columns can be filtered, searched or sorted (allowlist); the
  *   SQL only ever contains developer-given column names, every value is bound.
- * - contains / startsWith use `LIKE ? ESCAPE '!'` (ILIKE on PostgreSQL); with
- *   `Column::searchUsing()` they match a folded column, accent- and
- *   Turkish-insensitively, independent of the database collation.
+ * - contains / startsWith and the search are case-, accent- and
+ *   Turkish-insensitive on every database: the column is folded in SQL
+ *   (a PHP function on SQLite, LOWER/REPLACE elsewhere), or
+ *   `Column::searchUsing()` names a stored folded copy, faster on large tables.
  * - Smart search: every word must match in some searchable column.
  * - `date` columns compare days; in `datetime` columns a date-only value means
  *   the whole day (`whereDate`), a value with a time an exact instant.
@@ -56,7 +57,7 @@ final class QueryApplier
             foreach ($searchable === [] ? [] : $terms as $term) {
                 $builder->where(function ($group) use ($searchable, $term): void {
                     foreach ($searchable as $column) {
-                        self::like($group, $column, '%'.Text::escapeLike(self::needle($column, $term)).'%', 'or');
+                        self::like($group, $column, $term, false, 'or');
                     }
                 });
             }
@@ -121,8 +122,8 @@ final class QueryApplier
         }
 
         match ($operator) {
-            'contains' => self::like($builder, $column, '%'.Text::escapeLike(self::needle($column, trim($value))).'%', 'and'),
-            'startsWith' => self::like($builder, $column, Text::escapeLike(self::needle($column, trim($value))).'%', 'and'),
+            'contains' => self::like($builder, $column, trim($value), false, 'and'),
+            'startsWith' => self::like($builder, $column, trim($value), true, 'and'),
             'eq' => self::compare($builder, $column, '=', $value, $at),
             'gt' => self::compare($builder, $column, '>', $value, $at),
             'lt' => self::compare($builder, $column, '<', $value, $at),
@@ -208,21 +209,86 @@ final class QueryApplier
         return $parsed->setTimezone($zone)->format('Y-m-d H:i:s');
     }
 
-    private static function needle(Column $column, string $text): string
+    /**
+     * Lowercase letters folded in SQL after LOWER(): Turkish letters and the
+     * accents of the supported languages (de, fr, es); same result as
+     * Text::fold() for them. `İ` and `I` are replaced before LOWER() so that
+     * Turkish collations (I → ı) and ICU (İ → i̇) cannot interfere.
+     */
+    private const SQL_FOLD = [
+        'ı' => 'i', 'ş' => 's', 'ğ' => 'g', 'ç' => 'c', 'ö' => 'o', 'ü' => 'u', 'â' => 'a', 'î' => 'i', 'û' => 'u',
+        'á' => 'a', 'à' => 'a', 'ä' => 'a', 'ã' => 'a', 'é' => 'e', 'è' => 'e', 'ê' => 'e', 'ë' => 'e',
+        'í' => 'i', 'ì' => 'i', 'ï' => 'i', 'ó' => 'o', 'ò' => 'o', 'ô' => 'o', 'õ' => 'o',
+        'ú' => 'u', 'ù' => 'u', 'ñ' => 'n', 'ÿ' => 'y',
+    ];
+
+    /** @var \WeakMap<\PDO, true>|null connections that have the adt_fold() SQLite function */
+    private static ?\WeakMap $sqliteFold = null;
+
+    /**
+     * SQL for Text::fold() of an expression. SQLite gets a registered PHP
+     * function (its LOWER() only knows ASCII, and long REPLACE chains overflow
+     * its parser); other databases use LOWER() and a REPLACE chain.
+     */
+    private static function foldSql(\Illuminate\Database\ConnectionInterface $connection, string $driver, string $expression): string
     {
-        return $column->foldedColumn() !== null ? Text::fold($text) : $text;
+        if ($driver === 'sqlite' && $connection instanceof \Illuminate\Database\Connection) {
+            self::$sqliteFold ??= new \WeakMap();
+            $fold = static fn (mixed $value): ?string => $value === null ? null : Text::fold((string) $value);
+            foreach (array_unique([$connection->getPdo(), $connection->getReadPdo()], SORT_REGULAR) as $pdo) {
+                if (! $pdo instanceof \PDO || isset(self::$sqliteFold[$pdo])) {
+                    continue;
+                }
+                if (class_exists(\Pdo\Sqlite::class) && $pdo instanceof \Pdo\Sqlite) {
+                    $pdo->createFunction('adt_fold', $fold, 1, \Pdo\Sqlite::DETERMINISTIC);
+                } else {
+                    $pdo->sqliteCreateFunction('adt_fold', $fold, 1, \PDO::SQLITE_DETERMINISTIC);
+                }
+                self::$sqliteFold[$pdo] = true;
+            }
+
+            return "adt_fold({$expression})";
+        }
+        $literal = fn (string $char): string => ($driver === 'sqlsrv' ? 'N' : '')."'{$char}'";
+        $folded = "LOWER(REPLACE(REPLACE({$expression}, {$literal('İ')}, {$literal('i')}), {$literal('I')}, {$literal('i')}))";
+        foreach (self::SQL_FOLD as $from => $to) {
+            $folded = "REPLACE({$folded}, {$literal($from)}, {$literal($to)})";
+        }
+
+        return $folded;
     }
 
-    private static function like(EloquentBuilder|QueryBuilder $builder, Column $column, string $pattern, string $boolean): void
+    /**
+     * `contains` / `startsWith` for text, case-, accent- and Turkish-insensitive on
+     * every database:
+     *
+     * - with `Column::searchUsing()`: the folded column against the folded text
+     *   (fastest; the column can be indexed for `startsWith`);
+     * - otherwise: the column folded in SQL (see foldSql) against the folded text, OR
+     *   the column itself against the text as typed (LIKE, ILIKE on PostgreSQL),
+     *   so letters outside SQL_FOLD still match as the collation allows.
+     *
+     * Every value is bound; `%` and `_` typed by users are literal (`ESCAPE '!'`).
+     */
+    private static function like(EloquentBuilder|QueryBuilder $builder, Column $column, string $text, bool $prefix, string $boolean): void
     {
         $query = $builder instanceof EloquentBuilder ? $builder->getQuery() : $builder;
         $grammar = $query->getGrammar();
-        $postgres = $query->getConnection()->getDriverName() === 'pgsql';
-        $target = $column->foldedColumn() ?? $column->databaseColumn();
-        $expression = $grammar->wrap($target);
-        if ($postgres && $column->foldedColumn() === null && ! in_array($column->valueType(), [null, 'text'], true)) {
+        $driver = $query->getConnection()->getDriverName();
+        $pattern = fn (string $value): string => ($prefix ? '' : '%').Text::escapeLike($value).'%';
+        if ($column->foldedColumn() !== null) {
+            $builder->whereRaw($grammar->wrap($column->foldedColumn())." LIKE ? ESCAPE '!'", [$pattern(Text::fold($text))], $boolean);
+
+            return;
+        }
+        $expression = $grammar->wrap($column->databaseColumn());
+        if ($driver === 'pgsql' && ! in_array($column->valueType(), [null, 'text'], true)) {
             $expression = "CAST({$expression} AS TEXT)";
         }
-        $builder->whereRaw($expression.($postgres ? ' ILIKE' : ' LIKE')." ? ESCAPE '!'", [$pattern], $boolean);
+        $folded = self::foldSql($query->getConnection(), $driver, $expression);
+        $builder->where(function ($group) use ($folded, $expression, $driver, $pattern, $text): void {
+            $group->whereRaw("{$folded} LIKE ? ESCAPE '!'", [$pattern(Text::fold($text))])
+                ->orWhereRaw($expression.($driver === 'pgsql' ? ' ILIKE' : ' LIKE')." ? ESCAPE '!'", [$pattern($text)]);
+        }, null, null, $boolean);
     }
 }

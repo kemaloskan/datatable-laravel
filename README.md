@@ -252,11 +252,17 @@ Unknown, undeclared or not-allowed fields and malformed values throw
 
 ## Turkish and accent-insensitive search
 
-The browser folds text (`Text::fold`: `İSTANBUL`, `Iğdır`, `Ayşe` →
-`istanbul`, `igdir`, `ayse`). A plain `LIKE` follows the database collation
-instead, so results can differ (SQLite, for example, only ignores case for
-ASCII letters). For the same results as the browser, store a folded copy and
-point the column at it:
+Search and `contains` / `startsWith` ignore case, accents and the Turkish
+dotted/dotless i **on every database**, like the browser (`Text::fold`:
+`İSTANBUL`, `Iğdır`, `Ayşe` → `istanbul`, `igdir`, `ayse`): `istanbul` finds
+`İstanbul`, `IGDIR` finds `Iğdır`. The column is folded in SQL (a registered
+PHP function on SQLite, `LOWER`/`REPLACE` on MySQL, PostgreSQL and SQL
+Server); the text as typed is matched too, so the database collation still
+helps with letters outside the Turkish, German, French and Spanish ones.
+
+That fold runs for every row of every search. On large tables, store a folded
+copy once and point the column at it; it is then a plain `LIKE`, and
+`startsWith` can use an index:
 
 ```php
 // migration: $table->string('customer_search')->index();
