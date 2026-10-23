@@ -19,7 +19,7 @@ final class Format
 {
     public static function cell(Column $column, mixed $row): string
     {
-        $value = data_get($row, $column->databaseColumn());
+        $value = data_get($row, $column->attributeName());
         if ($column->formatter() !== null) {
             $text = ($column->formatter())($value, $row);
             if (! is_string($text)) {

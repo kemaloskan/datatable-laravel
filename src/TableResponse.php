@@ -101,7 +101,7 @@ final class TableResponse implements Responsable
             $data['id'] = $row->id;
         }
         foreach ($this->columns as $column) {
-            $data[$column->id()] = data_get($row, $column->databaseColumn());
+            $data[$column->id()] = data_get($row, $column->attributeName());
         }
 
         return $data;

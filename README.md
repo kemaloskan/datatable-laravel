@@ -145,6 +145,45 @@ protected function bulkActions(): array
   download) goes back to Livewire. Authorize inside the handler; `visible()`
   only decides what is shown.
 
+### Export and import
+
+```php
+protected function exportFormats(): array { return ['xlsx', 'csv']; }  // shows the buttons
+protected function exportFilename(): string { return 'siparisler'; }
+```
+
+The buttons download the **visible columns of every row matching the current
+search, filters and sorting** (or only the selected rows when there is a
+selection), read in chunks on the server. Up to `exportLimit()` rows (100,000);
+beyond that the user is asked to narrow the filters. See `TableExport` below.
+
+```php
+use Acunsoft\DataTable\Laravel\Livewire\WithTableImport;
+
+final class OrdersTable extends Component
+{
+    use WithDataTable, WithTableImport;
+
+    protected function importOptions(): array
+    {
+        return ['required' => ['customer', 'total'], 'headers' => ['total' => ['Amount', 'Tutar']]];
+    }
+
+    protected function importRow(array $values, int $line): void
+    {
+        $this->authorize('create', Order::class);
+        Order::create($values); // or validate further first
+    }
+}
+```
+
+`WithTableImport` adds an upload form (`.xlsx` or `.csv`, 10 MB by default).
+The file is read with limits, every value is converted to its column's type
+(Turkish `1.234,50` and `23.10.2026` with the `tr` locale), and only valid rows
+reach `importRow()`, **all in one database transaction**: an exception stores
+nothing. Problems are listed with their line ("Satır 3 · Tutar · “abc”:
+geçerli bir ondalık sayı değeri değil").
+
 **Safety.** All state from the browser is treated as untrusted. URL state that
 does not fit the columns (unknown or non-sortable fields, bad values, a page
 size that is not an option, a page past the end) is dropped or corrected
@@ -227,6 +266,43 @@ protected static function booted(): void
 // column:
 Column::make('customer')->sortable()->filterable()->searchUsing('customer_search');
 ```
+
+## Export on the server: `TableExport`
+
+```php
+Route::get('/orders/export', function (Request $request) {
+    Gate::authorize('viewAny', Order::class);
+
+    return TableExport::for(Order::query())
+        ->columns($columns)
+        ->query(TableQuery::fromRequest($request))  // the user's filters, search, sorting
+        ->limit(50_000)
+        ->xlsx('siparisler.xlsx');                  // or ->csv('siparisler.csv', ';')
+});
+```
+
+- Rows are read with `lazy()` and written as they come (xlsx via a temporary
+  file, deleted after sending), so memory stays flat.
+- Typed columns give real numbers, exact decimals (with their scale), Excel
+  dates and booleans; an untyped column with `format()` exports its text.
+- CSV is UTF-8 with a BOM and guarded against formula injection; xlsx text is
+  never a formula. Too many rows or a bad query answer HTTP 422.
+- xlsx needs `ext-zip`.
+
+## Import on the server: `SheetReader` and `RowImporter`
+
+```php
+$sheet  = (new SheetReader(maxRows: 5_000))->read($file->getRealPath(), $file->getClientOriginalExtension());
+$result = (new RowImporter($columns, required: ['customer'], decimalSeparator: ','))->import($sheet);
+foreach ($result->rows as ['line' => $line, 'values' => $values]) { /* store */ }
+$result->errors; // [['line' => 3, 'column' => 'total', 'value' => 'abc', 'message' => '…'], …]
+```
+
+`SheetReader` reads CSV (delimiter detection, quotes, BOM; non-UTF-8 files as
+Windows-1254, as Turkish Excel writes them) and xlsx (shared strings, dates,
+1904 dates, cached formula results; never evaluates formulas), with limits on
+file size, rows, columns, archive entries and inflated entry size (counted
+while reading). Errors are `ImportException`s with a translated message.
 
 ## Using the parts directly
 

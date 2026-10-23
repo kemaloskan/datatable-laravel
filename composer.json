@@ -35,7 +35,8 @@
     },
     "suggest": {
         "livewire/livewire": "^4.0 — for the WithDataTable Livewire trait and its views",
-        "ext-intl": "for locale-aware number and date text and exact accent folding"
+        "ext-intl": "for locale-aware number and date text and exact accent folding",
+        "ext-zip": "Needed to export and import Excel (.xlsx) files."
     },
     "autoload": {
         "psr-4": {

@@ -118,6 +118,14 @@ final class Column
     public function isHiddenByDefault(): bool { return $this->hidden && $this->hideable; }
     public function id(): string { return $this->id; }
     public function databaseColumn(): string { return $this->column; }
+
+    /** The attribute on a result row: `total` for the column `orders.total`. */
+    public function attributeName(): string
+    {
+        $dot = strrpos($this->column, '.');
+
+        return $dot === false ? $this->column : substr($this->column, $dot + 1);
+    }
     public function headerText(): string { return $this->header; }
     public function valueType(): ?string { return $this->type; }
     public function isSortable(): bool { return $this->sortable; }

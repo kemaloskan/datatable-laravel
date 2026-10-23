@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Acunsoft\DataTable\Laravel;
 
+use Illuminate\Http\JsonResponse;
 use InvalidArgumentException;
 
 /** A request asked for something the table does not allow; answer with HTTP 422. */
@@ -18,5 +19,11 @@ final class InvalidTableQuery extends InvalidArgumentException
     public static function at(string $parameter, string $message): self
     {
         return new self([$parameter => $message]);
+    }
+
+    /** Laravel renders this exception as HTTP 422 `{ message, errors }` wherever it is thrown. */
+    public function render(): JsonResponse
+    {
+        return new JsonResponse(['message' => $this->getMessage(), 'errors' => $this->errors], 422);
     }
 }

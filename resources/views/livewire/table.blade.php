@@ -20,8 +20,11 @@
     $bulkActions = $selectable ? $this->dataTableBulkActions() : [];
     $span = count($columns) + ($selectable ? 1 : 0) + ($rowActions === [] ? 0 : 1);
     $pageSize = $rows->perPage();
+    $exportFormats = array_values(array_intersect($this->exportFormats(), ['xlsx', 'csv']));
+    $importable = in_array(\Acunsoft\DataTable\Laravel\Livewire\WithTableImport::class, class_uses_recursive($this), true);
 @endphp
 <div class="adt">
+    <div class="adt-toolbar">
     @if ($hasSearch)
         <div class="adt-search">
             <label>
@@ -48,6 +51,22 @@
                 @endforeach
             </fieldset>
         </details>
+    @endif
+
+    @if ($exportFormats !== [])
+        <div class="adt-export" role="group" aria-label="{{ __('acun-datatable::table.export') }}">
+            <span>{{ __('acun-datatable::table.export') }}:</span>
+            @foreach ($exportFormats as $format)
+                <button type="button" class="adt-export-button" data-format="{{ $format }}"
+                    wire:click="export({{ \Illuminate\Support\Js::from($format) }})">{{ __('acun-datatable::table.export_'.$format) }}</button>
+            @endforeach
+            @error('export') <span class="adt-field-error" role="alert">{{ $message }}</span> @enderror
+        </div>
+    @endif
+    </div>
+
+    @if ($importable)
+        @include('acun-datatable::livewire.import')
     @endif
 
     @if ($selectable && $selectedCount > 0)

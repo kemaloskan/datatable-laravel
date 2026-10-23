@@ -8,6 +8,7 @@ use Acunsoft\DataTable\Laravel\Action;
 use Acunsoft\DataTable\Laravel\Column;
 use Acunsoft\DataTable\Laravel\InvalidTableQuery;
 use Acunsoft\DataTable\Laravel\QueryApplier;
+use Acunsoft\DataTable\Laravel\TableExport;
 use Acunsoft\DataTable\Laravel\TableQuery;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Contracts\View\View;
@@ -94,6 +95,29 @@ trait WithDataTable
     protected function caption(): ?string
     {
         return null;
+    }
+
+    /** @return list<string> export buttons to show: `'xlsx'` and/or `'csv'`. None by default. */
+    protected function exportFormats(): array
+    {
+        return [];
+    }
+
+    /** File name without extension. */
+    protected function exportFilename(): string
+    {
+        return 'export';
+    }
+
+    protected function exportLimit(): int
+    {
+        return 100_000;
+    }
+
+    /** CSV delimiter: `;` opens directly in Turkish Excel. */
+    protected function exportDelimiter(): string
+    {
+        return app()->getLocale() === 'tr' ? ';' : ',';
     }
 
     /** @return list<Action> buttons in each row; handlers receive the row */
@@ -394,6 +418,38 @@ trait WithDataTable
         }
 
         return $this->whereKeys($this->query(), $this->selectedKeys());
+    }
+
+    // Export ---------------------------------------------------------------
+
+    /**
+     * Download the visible columns of every row matching the current search,
+     * filters and sorting (or of the selected rows, when there is a
+     * selection), as xlsx or CSV. Only formats from `exportFormats()` work.
+     */
+    public function export(string $format): mixed
+    {
+        if (! in_array($format, $this->exportFormats(), true) || ! in_array($format, ['xlsx', 'csv'], true)) {
+            return null;
+        }
+        $query = $this->dataTableQuery();
+        $selected = $this->selectable() && $this->selectedCount() > 0;
+        $export = TableExport::for($selected ? $this->selectedQuery() : $this->query())
+            ->columns($this->dataTableVisibleColumns())
+            ->limit($this->exportLimit())
+            ->query($selected
+                ? TableQuery::fromArray(['sort' => implode(',', array_map(fn (array $rule) => "{$rule['field']}:{$rule['direction']}", $query->sorting))])
+                : $query, $this->dataTableColumns());
+        $name = $this->exportFilename();
+        try {
+            return $format === 'xlsx'
+                ? $export->xlsx("{$name}.xlsx", $name)
+                : $export->csv("{$name}.csv", $this->exportDelimiter());
+        } catch (InvalidTableQuery $error) {
+            $this->addError('export', implode(' ', $error->errors));
+
+            return null;
+        }
     }
 
     // Actions --------------------------------------------------------------
