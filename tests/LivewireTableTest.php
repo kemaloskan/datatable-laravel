@@ -26,15 +26,17 @@ final class LivewireTableTest extends TestCase
     public function test_renders_a_semantic_table_with_the_dom_renderer_class_names(): void
     {
         $table = Livewire::test(OrdersTable::class);
-        self::assertMatchesRegularExpression('/class="adt-previous"\s+aria-disabled="true"/', $table->html());
-        self::assertMatchesRegularExpression('/class="adt-next"\s+aria-disabled="true"/', $table->html());
+        self::assertMatchesRegularExpression('/adt-previous" aria-label="Previous"\s+aria-disabled="true"/', $table->html());
+        self::assertMatchesRegularExpression('/adt-next" aria-label="Next"\s+aria-disabled="true"/', $table->html());
         $table
             ->assertSeeHtml('<caption>Orders</caption>')
             ->assertSeeHtml('class="adt-table"')
             ->assertSeeHtml('<th scope="col" class="adt-th"')
             ->assertSeeHtml('data-label="Customer"')
             ->assertSeeHtml('aria-label="Select Ayşe Yılmaz"')
-            ->assertSeeHtml('<span class="adt-status" aria-live="polite">Page 1 of 1 · 5 rows</span>')
+            ->assertSeeHtml('<div class="adt-info" aria-live="polite" aria-atomic="true">Showing 1 to 5 of 5 rows</div>')
+            ->assertSeeHtml('aria-label="Page 1"')
+            ->assertSeeHtml('aria-current="page"')
             ->assertSee('Yes')
             ->assertSee('—'); // Column::format
     }
@@ -43,7 +45,8 @@ final class LivewireTableTest extends TestCase
     {
         app()->setLocale('tr');
         Livewire::test(OrdersTable::class)
-            ->assertSee('Sayfa 1 / 1 · 5 kayıt')
+            ->assertSee('Toplam: 5 kaydın 1 ile 5 arasını gösteriyor')
+            ->assertSee('Ara…')
             ->assertSee('Ayşe Yılmaz satırını seç')
             ->assertSee('Evet')
             ->assertSee('5.000,00'); // decimal in the Turkish format, scale kept
@@ -120,15 +123,16 @@ final class LivewireTableTest extends TestCase
         self::assertSame([['field' => 'total', 'operator' => 'gt', 'value' => '100']], $query->filters);
         self::assertSame(25, $query->pageSize); // 7 is not an option
         self::assertSame(['Ayşe Yılmaz', 'Iğdır Ticaret'], $this->customers($table)); // the last page instead of an empty one
-        $table->assertSee('Page 1 of 1 · 2 rows');
+        $table->assertSee('Showing 1 to 2 of 2 rows');
     }
 
     public function test_page_size_must_be_an_option_and_resets_the_page(): void
     {
         $table = Livewire::test(OrdersTable::class)->set('pageSize', 2)->call('nextPage')->call('nextPage');
         self::assertSame(['Deniz Şahin'], $this->customers($table));
-        self::assertMatchesRegularExpression('/class="adt-next"\s+aria-disabled="true"/', $table->html());
-        self::assertMatchesRegularExpression('/class="adt-previous"\s+wire:click="previousPage"/', $table->html());
+        self::assertMatchesRegularExpression('/adt-next" aria-label="Next"\s+aria-disabled="true"/', $table->html());
+        self::assertMatchesRegularExpression('/adt-previous" aria-label="Previous"\s+wire:click="previousPage"/', $table->html());
+        $table->assertSee('Showing 5 to 5 of 5 rows')->assertSeeHtml('wire:click="gotoPage(1)"');
         $table->set('pageSize', 25);
         self::assertSame(1, $table->instance()->getPage());
         self::assertCount(5, $this->customers($table));

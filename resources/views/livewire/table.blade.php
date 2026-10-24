@@ -2,79 +2,38 @@
   Acun DataTable for Livewire. The markup and class names match
   @acunsoft/datatable-dom, so its optional styles.css styles both.
   Every value is printed with {{ }} (escaped); nothing is rendered as HTML.
-  Publish with `php artisan vendor:publish --tag=acun-datatable-views` to change it.
+  Arrange the controls with the component's tableLayout() method; publish with
+  `php artisan vendor:publish --tag=acun-datatable-views` to change the markup.
 --}}
 @php
     $allColumns = $this->dataTableColumns();
     $columns = $this->dataTableVisibleColumns();
     $hiddenIds = $this->hiddenColumnIds();
-    $toggleable = count($allColumns) > 1 && collect($allColumns)->contains(fn ($column) => $column->isHideable());
     $rows = $this->rows;
     $sorting = $this->sorting();
     $selectable = $this->selectable();
     $pageSelection = $selectable ? $this->pageSelection() : 'none';
     [$selectedCount, $selectedExact] = $selectable ? $this->selectionSize() : [0, true];
     $exactTotal = $rows->totalIsExact();
-    $hasSearch = collect($allColumns)->contains(fn ($column) => $column->isSearchable());
-    $sizes = $this->pageSizeOptions();
     $rowActions = $this->dataTableRowActions();
     $bulkActions = $selectable ? $this->dataTableBulkActions() : [];
     $span = count($columns) + ($selectable ? 1 : 0) + ($rowActions === [] ? 0 : 1);
-    $pageSize = $rows->perPage();
-    $exportFormats = array_values(array_intersect($this->exportFormats(), ['xlsx', 'csv']));
+    $layout = $this->dataTableLayout();
     $importable = in_array(\Acunsoft\DataTable\Laravel\Livewire\WithTableImport::class, class_uses_recursive($this), true);
+    $importId = 'adt-import-'.$this->getId();
 @endphp
 <div class="adt">
-    <div class="adt-toolbar">
-    @if ($hasSearch)
-        <div class="adt-search">
-            <label>
-                <span>{{ __('acun-datatable::table.search') }}</span>
-                <input type="search" wire:model.live.debounce.300ms="search" autocomplete="off">
-            </label>
-        </div>
-    @endif
-
-    @if ($toggleable)
-        <details class="adt-columns">
-            <summary>{{ __('acun-datatable::table.columns') }}</summary>
-            <fieldset>
-                <legend>{{ __('acun-datatable::table.show_columns') }}</legend>
-                @foreach ($allColumns as $column)
-                    @php $shown = ! in_array($column->id(), $hiddenIds, true); @endphp
-                    <label>
-                        <input type="checkbox" value="{{ $column->id() }}"
-                            wire:click="toggleColumn({{ \Illuminate\Support\Js::from($column->id()) }})"
-                            @checked($shown)
-                            @disabled(! $column->isHideable() || ($shown && count($columns) === 1))>
-                        <span>{{ $column->headerText() }}</span>
-                    </label>
-                @endforeach
-            </fieldset>
-        </details>
-    @endif
-
-    @if ($exportFormats !== [])
-        <div class="adt-export" role="group" aria-label="{{ __('acun-datatable::table.export') }}">
-            <span>{{ __('acun-datatable::table.export') }}:</span>
-            @foreach ($exportFormats as $format)
-                <button type="button" class="adt-export-button" data-format="{{ $format }}"
-                    wire:click="export({{ \Illuminate\Support\Js::from($format) }})">{{ __('acun-datatable::table.export_'.$format) }}</button>
-            @endforeach
-            @error('export') <span class="adt-field-error" role="alert">{{ $message }}</span> @enderror
-        </div>
-    @endif
-    </div>
+    @include('acun-datatable::livewire.bar', ['position' => 'top'])
 
     @if ($importable)
         @include('acun-datatable::livewire.import')
     @endif
 
     @if ($selectable && $selectedCount > 0)
-        <div class="adt-selection" role="group" aria-label="{{ __('acun-datatable::table.bulk_actions') }}">
+        <div class="adt-selection" role="group" aria-label="{{ $this->tableText('bulk_actions') }}">
             <span class="adt-selection-count" role="status">{{ $selectedExact
-                ? trans_choice('acun-datatable::table.selected', $selectedCount, ['count' => \Acunsoft\DataTable\Laravel\Support\Format::count($selectedCount)])
-                : __('acun-datatable::table.selected_many', ['count' => \Acunsoft\DataTable\Laravel\Support\Format::count($selectedCount)]) }}</span>
+                ? $this->tableText('selected', $selectedCount, ['count' => \Acunsoft\DataTable\Laravel\Support\Format::count($selectedCount)])
+                : $this->tableText('selected_many', ['count' => \Acunsoft\DataTable\Laravel\Support\Format::count($selectedCount)]) }}</span>
             @foreach ($bulkActions as $action)
                 <button type="button" class="adt-bulk-action" data-action="{{ $action->id() }}"
                     wire:click="runBulkAction({{ \Illuminate\Support\Js::from($action->id()) }})"
@@ -82,15 +41,15 @@
             @endforeach
             @if (! $this->allMatching && ($rows->total() > $selectedCount || ! $exactTotal))
                 <button type="button" wire:click="selectAllMatching">{{ $exactTotal
-                    ? trans_choice('acun-datatable::table.select_matching', $rows->total(), ['total' => \Acunsoft\DataTable\Laravel\Support\Format::count($rows->total())])
-                    : __('acun-datatable::table.select_matching_many', ['total' => \Acunsoft\DataTable\Laravel\Support\Format::count($rows->total())]) }}</button>
+                    ? $this->tableText('select_matching', $rows->total(), ['total' => \Acunsoft\DataTable\Laravel\Support\Format::count($rows->total())])
+                    : $this->tableText('select_matching_many', ['total' => \Acunsoft\DataTable\Laravel\Support\Format::count($rows->total())]) }}</button>
             @endif
-            <button type="button" class="adt-clear-selection" wire:click="clearSelection">{{ __('acun-datatable::table.clear_selection') }}</button>
+            <button type="button" class="adt-clear-selection" wire:click="clearSelection">{{ $this->tableText('clear_selection') }}</button>
         </div>
     @endif
 
     <div class="adt-table-wrap" wire:loading.class="adt-loading" wire:loading.attr="aria-busy">
-        <div class="adt-notice" role="status" wire:loading>{{ __('acun-datatable::table.loading') }}</div>
+        <div class="adt-notice" role="status" wire:loading>{{ $this->tableText('loading') }}</div>
         <div class="adt-scroll">
             <table class="adt-table">
                 @if ($this->caption() !== null)
@@ -102,7 +61,7 @@
                             <th scope="col" class="adt-select">
                                 @if ($rows->isNotEmpty())
                                     <input type="checkbox"
-                                        aria-label="{{ __('acun-datatable::table.select_all') }}"
+                                        aria-label="{{ $this->tableText('select_all') }}"
                                         wire:key="adt-page-{{ $pageSelection }}"
                                         wire:click="togglePage"
                                         @checked($pageSelection === 'all')
@@ -129,7 +88,7 @@
                             </th>
                         @endforeach
                         @if ($rowActions !== [])
-                            <th scope="col" class="adt-th adt-actions">{{ __('acun-datatable::table.actions') }}</th>
+                            <th scope="col" class="adt-th adt-actions">{{ $this->tableText('actions') }}</th>
                         @endif
                     </tr>
                 </thead>
@@ -140,7 +99,7 @@
                             @if ($selectable)
                                 <td class="adt-select">
                                     <input type="checkbox"
-                                        aria-label="{{ __('acun-datatable::table.select_row', ['name' => $this->rowLabel($row)]) }}"
+                                        aria-label="{{ $this->tableText('select_row', ['name' => $this->rowLabel($row)]) }}"
                                         wire:click="toggleRow({{ \Illuminate\Support\Js::from($key) }})"
                                         @checked($selected)>
                                 </td>
@@ -149,12 +108,12 @@
                                 <td data-label="{{ $column->headerText() }}">{{ \Acunsoft\DataTable\Laravel\Support\Format::cell($column, $row) }}</td>
                             @endforeach
                             @if ($rowActions !== [])
-                                <td class="adt-actions" data-label="{{ __('acun-datatable::table.actions') }}">
+                                <td class="adt-actions" data-label="{{ $this->tableText('actions') }}">
                                     @php $name = $this->rowLabel($row); @endphp
                                     @foreach ($rowActions as $action)
                                         @if ($action->isVisible($row))
                                             <button type="button" class="adt-action" data-action="{{ $action->id() }}"
-                                                aria-label="{{ __('acun-datatable::table.row_action', ['action' => $action->labelText(), 'name' => $name]) }}"
+                                                aria-label="{{ $this->tableText('row_action', ['action' => $action->labelText(), 'name' => $name]) }}"
                                                 wire:click="runRowAction({{ \Illuminate\Support\Js::from($action->id()) }}, {{ \Illuminate\Support\Js::from($key) }})"
                                                 @if ($action->confirmText() !== null) wire:confirm="{{ $action->confirmText() }}" @endif>{{ $action->labelText() }}</button>
                                         @endif
@@ -164,7 +123,7 @@
                         </tr>
                     @empty
                         <tr class="adt-empty">
-                            <td colspan="{{ $span }}">{{ __('acun-datatable::table.empty') }}</td>
+                            <td colspan="{{ $span }}">{{ $this->tableText('empty') }}</td>
                         </tr>
                     @endforelse
                 </tbody>
@@ -172,21 +131,5 @@
         </div>
     </div>
 
-    <nav class="adt-pagination" aria-label="{{ __('acun-datatable::table.pagination') }}">
-        <button type="button" class="adt-previous"
-            @if ($rows->onFirstPage()) aria-disabled="true" @else wire:click="previousPage" @endif>{{ __('acun-datatable::table.previous') }}</button>
-        <span class="adt-status" aria-live="polite">{{ $exactTotal
-            ? trans_choice('acun-datatable::table.page_status', $rows->total(), ['page' => \Acunsoft\DataTable\Laravel\Support\Format::count($rows->currentPage()), 'pages' => \Acunsoft\DataTable\Laravel\Support\Format::count(max($rows->lastPage(), 1)), 'total' => \Acunsoft\DataTable\Laravel\Support\Format::count($rows->total())])
-            : __('acun-datatable::table.page_status_many', ['page' => \Acunsoft\DataTable\Laravel\Support\Format::count($rows->currentPage()), 'total' => \Acunsoft\DataTable\Laravel\Support\Format::count($rows->total())]) }}</span>
-        <button type="button" class="adt-next"
-            @if ($rows->hasMorePages()) wire:click="nextPage" @else aria-disabled="true" @endif>{{ __('acun-datatable::table.next') }}</button>
-        <label class="adt-page-size">
-            <span>{{ __('acun-datatable::table.page_size') }}</span>
-            <select wire:model.live="pageSize">
-                @foreach ($sizes as $size)
-                    <option value="{{ $size }}" @selected($size === $pageSize)>{{ $size }}</option>
-                @endforeach
-            </select>
-        </label>
-    </nav>
+    @include('acun-datatable::livewire.bar', ['position' => 'bottom'])
 </div>

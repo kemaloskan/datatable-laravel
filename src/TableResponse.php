@@ -34,6 +34,7 @@ final class TableResponse implements Responsable
     private ?Closure $transform = null;
     private ?int $countLimit = 10_000;
     private ?int $maxResultWindow = 100_000;
+    private ?int $countTimeout = 250;
 
     private function __construct(private readonly EloquentBuilder|QueryBuilder $builder)
     {
@@ -64,9 +65,10 @@ final class TableResponse implements Responsable
     }
 
     /**
-     * Count at most this many matches (default 10,000). Beyond it `totalRows`
-     * is left out (the browser shows "Page 5") and `totalRowsAtLeast` is sent.
-     * `null` counts every match, which is slow on large tables.
+     * Up to this many matches (default 10,000) the count is always exact and
+     * cheap. Beyond it an exact count gets `countTimeout()`; when that is not
+     * enough, `totalRows` is left out and `totalRowsAtLeast` is sent. `null`
+     * counts every match without a time limit, which is slow on large tables.
      */
     public function countLimit(?int $limit): self
     {
@@ -74,6 +76,21 @@ final class TableResponse implements Responsable
             throw new \InvalidArgumentException('The count limit must be at least 1, or null.');
         }
         $this->countLimit = $limit;
+
+        return $this;
+    }
+
+    /**
+     * Time an exact count past `countLimit()` may take, in milliseconds
+     * (default 250; PostgreSQL, MySQL and MariaDB). `null` never counts past
+     * the limit.
+     */
+    public function countTimeout(?int $milliseconds): self
+    {
+        if ($milliseconds !== null && $milliseconds < 1) {
+            throw new \InvalidArgumentException('The count timeout must be at least 1 ms, or null.');
+        }
+        $this->countTimeout = $milliseconds;
 
         return $this;
     }
@@ -102,7 +119,7 @@ final class TableResponse implements Responsable
     {
         try {
             $query = TableQuery::fromRequest($request, $this->maxPageSize, $this->defaultPageSize);
-            $page = QueryApplier::paginate($this->builder, $query, $this->columns, $this->countLimit, $this->maxResultWindow);
+            $page = QueryApplier::paginate($this->builder, $query, $this->columns, $this->countLimit, $this->maxResultWindow, $this->countTimeout);
         } catch (InvalidTableQuery $error) {
             return new JsonResponse(['message' => $error->getMessage(), 'errors' => $error->errors], 422);
         }

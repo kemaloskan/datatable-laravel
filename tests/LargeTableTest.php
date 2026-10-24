@@ -95,11 +95,12 @@ final class LargeTableTest extends TestCase
     {
         app()->setLocale('tr');
         $table = Livewire::test(SmallWindowOrdersTable::class)->set('pageSize', 2);
-        $table->assertSee('Sayfa 1 · 2+ kayıt')->assertSeeHtml('wire:click="nextPage"');
+        $table->assertSee('Toplam: 2+ kaydın 1 ile 2 arasını gösteriyor')->assertSeeHtml('wire:click="nextPage"');
         $table->call('selectAllMatching')->assertSee('2+ seçili');
         $table->call('clearSelection')->call('toggleRow', '1')->assertSee('Eşleşen 2+ kaydın tümünü seç');
 
         $deep = Livewire::withQueryParams(['page' => '50', 'pageSize' => '2'])->test(SmallWindowOrdersTable::class);
         self::assertSame(2, $deep->instance()->rows->currentPage()); // window 4 rows / 2 per page
+        self::assertMatchesRegularExpression('/adt-next" aria-label="[^"]+"\s+aria-disabled="true"/', $deep->html()); // the window ends here
     }
 }

@@ -29,7 +29,7 @@ final class LivewireColumnsTest extends TestCase
         $table = Livewire::test(OrdersTable::class)->assertSet('hiddenColumns', ['created']);
         self::assertSame(['Customer', 'City', 'Total', 'Active', 'Note'], $this->headers($table->html()));
         $html = $table->html();
-        self::assertStringContainsString('<summary>Columns</summary>', $html);
+        self::assertMatchesRegularExpression('/<summary>\s*<svg[^>]*>.*?<\/svg>\s*Columns\s*<\/summary>/s', $html);
         self::assertMatchesRegularExpression('/value="created"\s+wire:click="toggleColumn\(\'created\'\)"\s+(?!checked)/', $html);
         self::assertMatchesRegularExpression('/value="customer"[^>]*checked[^>]*disabled/s', $html); // not hideable
         self::assertStringNotContainsString('data-label="Created"', $html);

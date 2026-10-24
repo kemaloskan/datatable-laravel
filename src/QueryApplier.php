@@ -9,6 +9,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
 use Illuminate\Database\Query\Builder as QueryBuilder;
+use Illuminate\Database\QueryException;
 use LogicException;
 use Throwable;
 
@@ -95,10 +96,12 @@ final class QueryApplier
     /**
      * Apply the query and fetch one page.
      *
-     * - `$countLimit` (default 10,000): count at most this many matches. Up to
-     *   the limit the total is exact; beyond it, TablePage::totalIsExact() is
-     *   false and the UI shows "10,000+". `null` counts everything (COUNT(*)
-     *   over every match, slow on large tables).
+     * - `$countLimit` (default 10,000) and `$countTimeout` (default 250 ms): up
+     *   to the limit the count is always exact and cheap. Beyond it an exact
+     *   COUNT(*) runs with a time limit (PostgreSQL, MySQL, MariaDB); only when
+     *   it would take longer, TablePage::totalIsExact() is false and the UI
+     *   shows "10,000+". `$countLimit = null` always counts everything without
+     *   a time limit; `$countTimeout = null` never counts past the limit.
      * - `$maxResultWindow` (default 100,000): refuse pages that start past this
      *   many rows (deep OFFSETs are slow and an easy way to load the database).
      *   `null` allows any page.
@@ -107,14 +110,14 @@ final class QueryApplier
      *
      * @throws InvalidTableQuery
      */
-    public static function paginate(EloquentBuilder|QueryBuilder $builder, TableQuery $query, iterable $columns, ?int $countLimit = 10_000, ?int $maxResultWindow = 100_000): TablePage
+    public static function paginate(EloquentBuilder|QueryBuilder $builder, TableQuery $query, iterable $columns, ?int $countLimit = 10_000, ?int $maxResultWindow = 100_000, ?int $countTimeout = 250): TablePage
     {
         $offset = ($query->page - 1) * $query->pageSize;
         if ($maxResultWindow !== null && $offset >= $maxResultWindow) {
             throw InvalidTableQuery::at('page', "Pages past the first {$maxResultWindow} results are not available; narrow the filters or sort the other way.");
         }
         $applied = self::apply($builder, $query, $columns);
-        [$total, $exact] = self::count($applied, $countLimit);
+        [$total, $exact] = self::count($applied, $countLimit, $countTimeout);
         if ($exact) {
             $items = $offset < $total ? (clone $applied)->offset($offset)->limit($query->pageSize)->get() : [];
 
@@ -127,11 +130,16 @@ final class QueryApplier
     }
 
     /**
-     * Count matches, stopping after `$limit` + 1 rows.
+     * Count matches. Up to `$limit` the count stops after `$limit` + 1 rows and
+     * is exact. Past it, an exact COUNT(*) gets `$timeoutMs` milliseconds on
+     * PostgreSQL, MySQL and MariaDB; when it is slower (or on other databases)
+     * the result is the limit, marked as a lower bound. A query that ran out of
+     * time is remembered for ten minutes, so paging through it does not pay the
+     * time limit again.
      *
      * @return array{0: int, 1: bool} the count (or the limit) and whether it is exact
      */
-    public static function count(EloquentBuilder|QueryBuilder $builder, ?int $limit = 10_000): array
+    public static function count(EloquentBuilder|QueryBuilder $builder, ?int $limit = 10_000, ?int $timeoutMs = 250): array
     {
         $base = $builder instanceof EloquentBuilder ? $builder->toBase() : $builder;
         if ($limit === null) {
@@ -140,11 +148,87 @@ final class QueryApplier
         if ($limit < 1) {
             throw new \InvalidArgumentException('The count limit must be at least 1, or null.');
         }
+        if ($timeoutMs !== null && $timeoutMs < 1) {
+            throw new \InvalidArgumentException('The count timeout must be at least 1 ms, or null.');
+        }
         $probe = (clone $base)->reorder()->limit($limit + 1)->offset(0);
         $probe->columns = null;
         $counted = $base->newQuery()->fromSub($probe->selectRaw('1 as adt_match'), 'adt_matches')->count();
+        if ($counted <= $limit) {
+            return [$counted, true];
+        }
+        $exact = $timeoutMs === null ? null : self::countWithin($base, $timeoutMs);
 
-        return $counted > $limit ? [$limit, false] : [$counted, true];
+        return $exact === null ? [$limit, false] : [$exact, true];
+    }
+
+    /** An exact count, or null when the database cannot finish it within `$ms`. */
+    private static function countWithin(QueryBuilder $base, int $ms): ?int
+    {
+        $connection = $base->getConnection();
+        $driver = $connection->getDriverName();
+        if (! in_array($driver, ['pgsql', 'mysql', 'mariadb'], true)) {
+            return null; // no per-statement time limit: keep the cheap lower bound
+        }
+        $slow = 'acun-datatable:slow-count:'.sha1($connection->getName()."\0".$base->toSql()."\0".serialize($base->getBindings()));
+        $cache = self::cache();
+        if ($cache?->has($slow)) {
+            return null;
+        }
+        $count = fn (): int => (clone $base)->getCountForPagination();
+        try {
+            if ($driver === 'pgsql') {
+                // In a (nested) transaction, so a cancelled statement only rolls back its own savepoint.
+                $previous = (string) $connection->selectOne("select current_setting('statement_timeout') as value")->value;
+
+                return $connection->transaction(function () use ($connection, $ms, $previous, $count): int {
+                    $connection->statement("select set_config('statement_timeout', ?, true)", [(string) $ms]);
+                    $total = $count();
+                    $connection->statement("select set_config('statement_timeout', ?, true)", [$previous]);
+
+                    return $total;
+                });
+            }
+            // MySQL counts milliseconds, MariaDB seconds; both only for this session, restored below.
+            $variable = $driver === 'mysql' ? 'max_execution_time' : 'max_statement_time';
+            try {
+                $previous = $connection->selectOne("select @@session.{$variable} as value")->value;
+                $connection->statement("set session {$variable} = ?", [$driver === 'mysql' ? $ms : $ms / 1000]);
+            } catch (QueryException) {
+                return null; // e.g. MariaDB behind the mysql driver: no time limit available
+            }
+            try {
+                return $count();
+            } finally {
+                $connection->statement("set session {$variable} = ?", [$previous]);
+            }
+        } catch (QueryException $error) {
+            if (! self::timedOut($error, $driver)) {
+                throw $error;
+            }
+            $cache?->put($slow, true, 600);
+
+            return null;
+        }
+    }
+
+    private static function timedOut(QueryException $error, string $driver): bool
+    {
+        $state = (string) ($error->errorInfo[0] ?? $error->getCode());
+        $code = (int) ($error->errorInfo[1] ?? 0);
+
+        return $driver === 'pgsql'
+            ? $state === '57014'                    // query_canceled: statement_timeout
+            : in_array($code, [3024, 1969], true);  // MySQL ER_QUERY_TIMEOUT, MariaDB ER_STATEMENT_TIMEOUT
+    }
+
+    private static function cache(): ?\Illuminate\Contracts\Cache\Repository
+    {
+        try {
+            return function_exists('app') && app()->bound('cache') ? app('cache')->store() : null;
+        } catch (Throwable) {
+            return null; // no cache configured: just retry next time
+        }
     }
 
     /**

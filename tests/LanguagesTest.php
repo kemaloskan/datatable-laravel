@@ -45,14 +45,16 @@ final class LanguagesTest extends TestCase
 
     public function test_singular_plural_and_digit_grouping_follow_the_language(): void
     {
-        $status = fn (int $total) => trans_choice('acun-datatable::table.page_status', $total, ['page' => 1, 'pages' => 1, 'total' => $total]);
+        $info = fn (int $total) => trans_choice('acun-datatable::table.page_info', $total, ['from' => 1, 'to' => max($total, 1), 'total' => $total]);
         app()->setLocale('en');
-        self::assertSame('Page 1 of 1 · 1 row', $status(1));
-        self::assertSame('Page 1 of 1 · 5 rows', $status(5));
+        self::assertSame('Showing 1 to 1 of 1 row', $info(1));
+        self::assertSame('Showing 1 to 5 of 5 rows', $info(5));
         app()->setLocale('fr');
-        self::assertSame('Page 1 sur 1 · 0 ligne', $status(0)); // French: 0 is singular
+        self::assertSame('Affichage de 1 à 1 sur 0 ligne', $info(0)); // French: 0 is singular
+        app()->setLocale('de');
+        self::assertSame('1 bis 5 von 5 Einträgen', $info(5));
         app()->setLocale('tr');
-        self::assertSame('Sayfa 1 / 1 · 1 kayıt', $status(1));
+        self::assertSame('Toplam: 1 kaydın 1 ile 1 arasını gösteriyor', $info(1));
         app()->setLocale('de');
         self::assertSame('2 Zeilen importiert.', trans_choice('acun-datatable::table.import_done', 2, ['count' => 2]));
         self::assertSame('1.600', \Acunsoft\DataTable\Laravel\Support\Format::count(1600));
@@ -63,11 +65,11 @@ final class LanguagesTest extends TestCase
     {
         Order::query()->whereKeyNot(1)->delete();
         foreach ([
-            'en' => ['Page 1 of 1 · 1 row', 'Search'],
-            'de' => ['Seite 1 von 1 · 1 Eintrag', 'Suchen'],
-            'fr' => ['Page 1 sur 1 · 1 ligne', 'Rechercher'],
-            'es' => ['Página 1 de 1 · 1 fila', 'Buscar'],
-            'tr' => ['Sayfa 1 / 1 · 1 kayıt', 'Ara'],
+            'en' => ['Showing 1 to 1 of 1 row', 'Search'],
+            'de' => ['1 bis 1 von 1 Eintrag', 'Suchen'],
+            'fr' => ['Affichage de 1 à 1 sur 1 ligne', 'Rechercher'],
+            'es' => ['Mostrando 1 a 1 de 1 fila', 'Buscar'],
+            'tr' => ['Toplam: 1 kaydın 1 ile 1 arasını gösteriyor', 'Ara'],
         ] as $language => [$status, $search]) {
             app()->setLocale($language);
             Livewire::test(OrdersTable::class)->assertSee($status)->assertSee($search);

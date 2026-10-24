@@ -111,4 +111,12 @@ trait WithTableImport
             unset($this->rows);
         }
     }
+
+    /** Close the import panel: forget the chosen file, its errors and the last report. */
+    public function closeImport(): void
+    {
+        $this->importFile = null;
+        $this->importReport = null;
+        $this->resetErrorBag('importFile');
+    }
 }

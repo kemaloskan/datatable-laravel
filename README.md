@@ -147,14 +147,69 @@ protected function bulkActions(): array
   download) goes back to Livewire. Authorize inside the handler; `visible()`
   only decides what is shown.
 
+### Layout, pagination and the tools menu
+
+The table sits between two bars, like DataTables: page size and search top
+left, the column menu and the **tools menu** top right, the row range
+(`Toplam: 5.000 kaydın 1 ile 25 arasını gösteriyor`) bottom left and **numbered pages** bottom right
+(`‹ 1 … 4 5 6 … 200 ›`, with the current page marked `aria-current="page"`).
+Return only the slots you want to change from `tableLayout()`:
+
+```php
+protected function tableLayout(): array
+{
+    return [
+        'topStart' => ['pageSize', 'search', 'orders.filters'], // your own Blade view
+        'bottomEnd' => ['paging'],
+        'bottomStart' => [],                                     // empty
+    ];
+}
+
+protected function pagingOptions(): array
+{
+    return ['siblings' => 2, 'boundaries' => 1, 'firstLast' => true]; // « ‹ 1 … 3 4 5 6 7 … 200 › »
+}
+```
+
+Every text can be changed for one table with `texts()`, by the keys of the
+package's language file, for example a noun that fits the rows (Turkish
+suffixes cannot be generated, so give the whole sentence):
+
+```php
+protected function texts(): array
+{
+    return [
+        'page_info' => __('Toplam: :total personel üyesinin :from ile :to arasını gösteriyor'),
+        'search_placeholder' => __('Personel ara…'),
+    ];
+}
+```
+
+For every table at once, publish the language files
+(`php artisan vendor:publish --tag=acun-datatable-lang`) or put the keys in
+`lang/vendor/acun-datatable/{locale}/table.php`.
+
+Features are `pageSize`, `search`, `columns`, `tools`, `info` and `paging`;
+any other name is included as a Blade view with the table's variables (`$rows`,
+`$columns`, and `$this` for the component), so filter buttons or a "New" link
+fit into the bars. The pager keeps the same number of buttons as you move, so
+it never jumps in width; with a "10,000+" total it numbers the pages known to
+exist and stops at the result window.
+
+The tools menu holds everything that is not about the rows on screen: **export**
+(`exportFormats()`), **print** (`printable()`, the visible page without the
+controls) and **import** (`WithTableImport`). It only appears when at least one
+of them is on.
+
 ### Export and import
 
 ```php
-protected function exportFormats(): array { return ['xlsx', 'csv']; }  // shows the buttons
+protected function exportFormats(): array { return ['xlsx', 'csv']; }  // shows them in the tools menu
 protected function exportFilename(): string { return 'siparisler'; }
+protected function printable(): bool { return true; }                  // adds "Print"
 ```
 
-The buttons download the **visible columns of every row matching the current
+The export items download the **visible columns of every row matching the current
 search, filters and sorting** (or only the selected rows when there is a
 selection), read in chunks on the server. Up to `exportLimit()` rows (100,000);
 beyond that the user is asked to narrow the filters. See `TableExport` below.
@@ -179,7 +234,9 @@ final class OrdersTable extends Component
 }
 ```
 
-`WithTableImport` adds an upload form (`.xlsx` or `.csv`, 10 MB by default).
+`WithTableImport` adds "Import…" to the tools menu: it opens the file picker,
+and once a file is chosen a panel above the table shows its name with
+"Import" and "Close" (`.xlsx` or `.csv`, 10 MB by default).
 The file is read with limits, every value is converted to its column's type
 (Turkish `1.234,50` and `23.10.2026` with the `tr` locale), and only valid rows
 reach `importRow()`, **all in one database transaction**: an exception stores
@@ -196,10 +253,12 @@ call the actions listed above (plus `runRowAction` and `runBulkAction`, which
 only run actions you declared). Authorize in `query()` or `mount()` as usual.
 
 **Markup and styling.** The view is plain Blade with the class names of
-`@acunsoft/datatable-dom` (`adt-table`, `adt-sort`, `adt-pagination`, …), so
-its optional stylesheet styles both. Include it from npm
+`@acunsoft/datatable-dom` (`adt-table`, `adt-sort`, `adt-paging`, …), so
+its optional stylesheet styles both, including the responsive layout, dark mode
+and the `--adt-*` custom properties for your colours, radii and density. The
+menus close with Escape or a click outside (Alpine, which Livewire ships). Include it from npm
 (`@acunsoft/datatable-dom/styles.css`) or style the classes yourself. To
-change the markup, publish the view:
+change the markup, publish the views (`table`, `bar`, `feature`, `import`):
 
 ```bash
 php artisan vendor:publish --tag=acun-datatable-views
@@ -298,11 +357,20 @@ GIN trigram index (step 2 below).
 
 What the package does for you:
 
-- **Bounded counts.** At most 10,000 matches are counted; beyond that the
-  table says "10,000+" (Livewire) or sends `totalRowsAtLeast` instead of
-  `totalRows` (JSON), and "next page" comes from fetching one extra row.
-  `countLimit(null)` (TableResponse) or `countLimit(): ?int` (Livewire)
-  restores exact counts.
+- **Exact counts within a time limit.** Up to 10,000 matches the count stops
+  early and is always exact. Past that, an exact `COUNT(*)` gets 250 ms
+  (PostgreSQL `statement_timeout`, MySQL `max_execution_time`, MariaDB
+  `max_statement_time`, set only for that statement and restored; inside a
+  transaction it runs in a savepoint). On 5,000,000 rows that is enough for the
+  whole table (57 ms) and for most filters, so the table says "Toplam:
+  5.000.000 kaydın 1 ile 25 arasını gösteriyor". Only a count that would take
+  longer falls back to "10,000+" (Livewire) or `totalRowsAtLeast` instead of
+  `totalRows` (JSON), with "next page" from fetching one extra row; that query
+  is remembered for ten minutes in your cache, so paging through it does not
+  pay the 250 ms again. Tune it with `countTimeout()` (`null`: never count past
+  the limit) and `countLimit()` (`null`: always count everything, no time
+  limit). SQLite and SQL Server have no per-statement time limit and keep the
+  "10,000+" bound.
 - **Result window.** Pages that start past 100,000 rows are refused (422) or,
   in Livewire, clamped. Deep `OFFSET`s read and throw away millions of rows;
   sort the other way or filter instead. `maxResultWindow(null)` removes it.

@@ -9,7 +9,9 @@ use Acunsoft\DataTable\Laravel\Column;
 use Acunsoft\DataTable\Laravel\InvalidTableQuery;
 use Acunsoft\DataTable\Laravel\QueryApplier;
 use Acunsoft\DataTable\Laravel\TableExport;
+use Acunsoft\DataTable\Laravel\TablePage;
 use Acunsoft\DataTable\Laravel\TableQuery;
+use Acunsoft\DataTable\Laravel\Support\PageItems;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
@@ -81,18 +83,92 @@ trait WithDataTable
     }
 
     /**
-     * Count at most this many matches (default 10,000); beyond it the view shows
-     * "10,000+" instead of an exact total. `null` counts everything.
+     * Up to this many matches (default 10,000) the count is always exact and
+     * cheap. Beyond it an exact count gets `countTimeout()`; only when that is
+     * not enough the view shows "10,000+". `null` counts everything, always.
      */
     protected function countLimit(): ?int
     {
         return 10_000;
     }
 
+    /**
+     * Time an exact count past `countLimit()` may take, in milliseconds
+     * (default 250; PostgreSQL, MySQL and MariaDB, other databases show
+     * "10,000+"). `null` never counts past the limit.
+     */
+    protected function countTimeout(): ?int
+    {
+        return 250;
+    }
+
     /** Pages start at most this many rows deep (default 100,000; `null`: no limit). */
     protected function maxResultWindow(): ?int
     {
         return 100_000;
+    }
+
+    /**
+     * Where the controls go: a bar above and one below the table, each with a
+     * start and an end side. Return only the slots you change; the others keep
+     * their defaults: `topStart` page size and search, `topEnd` column menu and
+     * tools, `bottomStart` info, `bottomEnd` pages. A slot is a list of features:
+     * `pageSize`, `search`, `columns`, `tools` (export, print and import menu),
+     * `info`, `paging`, or the name of your own Blade view, which is included
+     * with the table's variables (`$rows`, `$columns`, …). `[]` empties a slot.
+     *
+     * @return array<'topStart'|'topEnd'|'bottomStart'|'bottomEnd', list<string>>
+     */
+    protected function tableLayout(): array
+    {
+        return [];
+    }
+
+    /**
+     * The numbered pager: pages around the current one (`siblings`), pages
+     * always shown at both ends (`boundaries`) and first/last buttons.
+     *
+     * @return array{siblings: int, boundaries: int, firstLast: bool}
+     */
+    protected function pagingOptions(): array
+    {
+        return ['siblings' => 1, 'boundaries' => 1, 'firstLast' => false];
+    }
+
+    /** Show "Print" in the tools menu (prints the visible page without the controls). */
+    protected function printable(): bool
+    {
+        return false;
+    }
+
+    /**
+     * Texts for this table only, by the keys of the package's language file
+     * (`lang/en/table.php`), e.g. a noun that fits the rows:
+     * `['page_info' => ':total personel üyesinden :from ile :to arası gösteriliyor']`.
+     * Use `__()` inside for several languages; `a|b` gives singular and plural.
+     *
+     * @return array<string, string>
+     */
+    protected function texts(): array
+    {
+        return [];
+    }
+
+    /**
+     * A text of the views: the table's own from `texts()`, else the package's.
+     * Pass a number as the second argument for singular/plural texts.
+     *
+     * @param int|array<string, mixed> $count the number for plural texts, or the replacements
+     * @param array<string, mixed> $replace
+     */
+    protected function tableText(string $key, int|array $count = [], array $replace = []): string
+    {
+        $line = $this->texts()[$key] ?? 'acun-datatable::table.'.$key;
+        if (is_array($count)) {
+            return (string) __($line, $count);
+        }
+
+        return trans_choice($line, $count, $replace);
     }
 
     /** Explicitly selected keys are limited; "all matching" selection has no limit. */
@@ -182,7 +258,7 @@ trait WithDataTable
     public function rows(): LengthAwarePaginator
     {
         $query = $this->dataTableQuery();
-        $page = fn () => QueryApplier::paginate($this->query(), $this->dataTableQuery(), $this->dataTableColumns(), $this->countLimit(), $this->maxResultWindow());
+        $page = fn () => QueryApplier::paginate($this->query(), $this->dataTableQuery(), $this->dataTableColumns(), $this->countLimit(), $this->maxResultWindow(), $this->countTimeout());
         $rows = $page();
         if ($rows->isEmpty() && $query->page > 1 && $rows->total() > 0) {
             // The page is past the end (rows were deleted, or the URL was edited): show the last one.
@@ -421,7 +497,7 @@ trait WithDataTable
     protected function selectionSize(): array
     {
         return $this->allMatching
-            ? QueryApplier::count($this->selectedQuery(), $this->countLimit())
+            ? QueryApplier::count($this->selectedQuery(), $this->countLimit(), $this->countTimeout())
             : [count($this->selectedKeys()), true];
     }
 
@@ -593,6 +669,50 @@ trait WithDataTable
             'filters' => $filters,
             'search' => mb_substr($this->search, 0, TableQuery::MAX_TEXT),
         ], $max, $pageSize);
+    }
+
+    /**
+     * What the info text and the pager show for a page of rows.
+     *
+     * @return array{from: int, to: int, items: list<int|null>, page: int, last: ?int, previous: bool, next: bool}
+     */
+    protected function pagerState(TablePage $rows): array
+    {
+        $options = $this->pagingOptions() + ['siblings' => 1, 'boundaries' => 1];
+        $size = $rows->perPage();
+        $page = $rows->currentPage();
+        $window = $this->maxResultWindow() === null ? TableQuery::MAX_PAGE : max(1, intdiv($this->maxResultWindow() - 1, $size) + 1);
+        // A lower-bound total still proves that its pages exist; past the window none can be opened.
+        $pages = max($page, min((int) ceil(max($rows->total(), 1) / $size), $window, TableQuery::MAX_PAGE));
+        $from = $rows->isEmpty() ? 0 : ($page - 1) * $size + 1;
+
+        return [
+            'from' => $from,
+            'to' => $rows->isEmpty() ? 0 : $from + $rows->count() - 1,
+            'items' => PageItems::make($page, $pages, (int) $options['siblings'], (int) $options['boundaries']),
+            'page' => $page,
+            'last' => $rows->totalIsExact() ? $pages : null,
+            'previous' => $page > 1,
+            'next' => $page < $window && $rows->hasMorePages(),
+        ];
+    }
+
+    /** @return array<string, list<string>> */
+    protected function dataTableLayout(): array
+    {
+        $custom = $this->tableLayout();
+        $layout = [];
+        foreach ([
+            'topStart' => ['pageSize', 'search'],
+            'topEnd' => ['columns', 'tools'],
+            'bottomStart' => ['info'],
+            'bottomEnd' => ['paging'],
+        ] as $slot => $default) {
+            $features = array_key_exists($slot, $custom) ? $custom[$slot] : $default;
+            $layout[$slot] = array_values(array_filter(is_array($features) ? $features : [$features], 'is_string'));
+        }
+
+        return $layout;
     }
 
     protected function tableChanged(): void
