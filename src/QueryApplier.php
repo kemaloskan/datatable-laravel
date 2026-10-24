@@ -345,10 +345,12 @@ final class QueryApplier
                 });
             }
             // MySQL counts milliseconds, MariaDB seconds; both only for this session, restored below.
-            $variable = $driver === 'mysql' ? 'max_execution_time' : 'max_statement_time';
+            // MariaDB is often reached through the mysql driver: ask the server, not the driver name.
+            $maria = $driver === 'mariadb' || (method_exists($connection, 'isMaria') && $connection->isMaria());
+            $variable = $maria ? 'max_statement_time' : 'max_execution_time';
             try {
                 $previous = $connection->selectOne("select @@session.{$variable} as value")->value;
-                $connection->statement("set session {$variable} = ?", [$driver === 'mysql' ? $ms : $ms / 1000]);
+                $connection->statement("set session {$variable} = ?", [$maria ? $ms / 1000 : $ms]);
             } catch (QueryException) {
                 return null; // e.g. MariaDB behind the mysql driver: no time limit available
             }
