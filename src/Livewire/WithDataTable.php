@@ -135,6 +135,37 @@ trait WithDataTable
 
     /** Pages start at most this many rows deep (default 100,000; `null`: no limit). */
     /**
+     * Answer the search with a search engine instead of `LIKE` over the
+     * columns: return the matching keys, e.g. with Laravel Scout
+     * `Order::search($search)->take(10_000)->keys()`. Filters, sorting,
+     * paging, counts, totals, bulk actions and exports stay in the database,
+     * limited to those keys. `null` (default): search the columns.
+     *
+     * @return iterable<int|string>|null
+     */
+    protected function searchEngine(string $search): ?iterable
+    {
+        return null;
+    }
+
+    /** @var array<string, list<int|string>> the engine's keys per search text, for this request */
+    private array $searchEngineKeys = [];
+
+    private function withEngine(TableQuery $query): TableQuery
+    {
+        if ($query->search === '') {
+            return $query;
+        }
+        if (! array_key_exists($query->search, $this->searchEngineKeys)) {
+            $keys = $this->searchEngine($query->search);
+            $this->searchEngineKeys[$query->search] = $keys === null ? null : (is_array($keys) ? $keys : iterator_to_array($keys, false));
+        }
+        $keys = $this->searchEngineKeys[$query->search];
+
+        return $keys === null ? $query : $query->withSearchKeys($keys, $this->keyName());
+    }
+
+    /**
      * Keyset paging: every page costs what page 2 does, at any depth, and no
      * result window applies. Pages are reached one after another (the pager
      * offers those seen so far and the next one). Sort columns should not
@@ -977,11 +1008,11 @@ trait WithDataTable
     {
         if ($this->allMatching) {
             $query = $this->dataTableQuery();
-            $builder = QueryApplier::apply(
-                $this->query(),
-                TableQuery::fromArray(['filters' => $this->wireFilters($query), 'search' => $query->search]),
-                $this->dataTableColumns(),
-            );
+            $matching = TableQuery::fromArray(['filters' => $this->wireFilters($query), 'search' => $query->search]);
+            if ($query->searchKeys !== null) {
+                $matching = $matching->withSearchKeys($query->searchKeys, $query->searchKeyColumn); // the engine's rows, as on screen
+            }
+            $builder = QueryApplier::apply($this->query(), $matching, $this->dataTableColumns());
 
             return $this->excluded === [] ? $builder : $this->whereKeys($builder, $this->excluded, not: true);
         }
@@ -1134,7 +1165,7 @@ trait WithDataTable
             // Only pages a known cursor leads to; a page from an edited URL starts over.
             $page = $page > 1 && is_string($this->cursors[$page] ?? null) ? $page : 1;
 
-            return TableQuery::fromArray([
+            return $this->withEngine(TableQuery::fromArray([
                 'page' => $page,
                 'pageSize' => $pageSize,
                 'sort' => implode(',', array_slice($sort, 0, TableQuery::MAX_SORT_RULES)),
@@ -1142,16 +1173,16 @@ trait WithDataTable
                 'search' => mb_substr($this->search, 0, TableQuery::MAX_TEXT),
                 'paging' => 'cursor',
                 'cursor' => $page > 1 ? $this->cursors[$page] : null,
-            ], $max, $pageSize);
+            ], $max, $pageSize));
         }
 
-        return TableQuery::fromArray([
+        return $this->withEngine(TableQuery::fromArray([
             'page' => min(max($page, 1), TableQuery::MAX_PAGE, $this->maxResultWindow() === null ? TableQuery::MAX_PAGE : max(1, intdiv($this->maxResultWindow() - 1, $pageSize) + 1)),
             'pageSize' => $pageSize,
             'sort' => implode(',', array_slice($sort, 0, TableQuery::MAX_SORT_RULES)),
             'filters' => $filters,
             'search' => mb_substr($this->search, 0, TableQuery::MAX_TEXT),
-        ], $max, $pageSize);
+        ], $max, $pageSize));
     }
 
     /**

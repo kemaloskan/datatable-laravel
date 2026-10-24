@@ -154,11 +154,15 @@ final class TableExport
             throw new \LogicException('Call columns() before exporting.');
         }
         $query = $this->query ?? TableQuery::fromArray([]);
-        $builder = QueryApplier::apply(clone $this->builder, TableQuery::fromArray([
+        $rebuilt = TableQuery::fromArray([
             'filters' => array_map(fn (array $rule) => ['field' => $rule['field'], 'op' => $rule['operator'], 'value' => $rule['value']], $query->filters),
             'search' => $query->search,
             'sort' => implode(',', array_map(fn (array $rule) => "{$rule['field']}:{$rule['direction']}", $query->sorting)),
-        ]), $this->queryColumns ?? $this->columns);
+        ]);
+        if ($query->searchKeys !== null) {
+            $rebuilt = $rebuilt->withSearchKeys($query->searchKeys, $query->searchKeyColumn); // the engine's answer, as on screen
+        }
+        $builder = QueryApplier::apply(clone $this->builder, $rebuilt, $this->queryColumns ?? $this->columns);
         if ((clone $builder)->limit($this->limit + 1)->count() > $this->limit) {
             throw InvalidTableQuery::at('export', __('acun-datatable::table.export_too_large', ['max' => $this->limit]));
         }

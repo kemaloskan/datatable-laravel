@@ -598,7 +598,24 @@ What you do:
    and swap it in (37 s for 5M rows), or update in batches by primary key.
 3. **Beyond a few million searchable rows, use a search engine**
    (Meilisearch, Typesense or OpenSearch through Laravel Scout) for the text
-   search, and keep filters, sorting and paging in the database.
+   search, and keep filters, sorting and paging in the database:
+
+   ```php
+   // Livewire
+   protected function searchEngine(string $search): ?iterable
+   {
+       return Order::search($search)->take(10_000)->keys();
+   }
+
+   // JSON endpoint
+   TableResponse::for(Order::query())->columns([...])
+       ->searchEngine(fn (string $search) => Order::search($search)->take(10_000)->keys());
+   ```
+
+   The engine is asked once per request and only for a search; its keys then
+   limit the rows (`whereKey`) for the page, the count, footer totals, bulk
+   actions and exports alike, inside `query()` and the filters. The package
+   does not depend on Scout: any function that returns keys works.
 
 ## Export on the server: `TableExport`
 

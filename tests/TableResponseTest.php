@@ -18,6 +18,8 @@ final class TableResponseTest extends TestCase
             Column::make('total')->type('decimal')->sortable()->filterable(),
         ];
         Route::match(['get', 'post'], '/orders/data', fn () => TableResponse::for(Order::query())->columns($columns())->maxPageSize(3, 2));
+        Route::get('/orders/engine', fn () => TableResponse::for(Order::query())->columns($columns())
+            ->searchEngine(fn (string $search) => $search === 'vip' ? [1, 3, 99] : []));
         Route::get('/orders/custom', fn () => TableResponse::for(Order::query())->columns($columns())
             ->transform(fn (Order $order) => ['name' => mb_strtoupper($order->customer)]));
     }
@@ -90,6 +92,17 @@ final class TableResponseTest extends TestCase
         $this->getJson('/orders/data?paging=cursor&cursor=bm9wZQ')->assertStatus(422)->assertJsonStructure(['errors' => ['cursor']]);
         $first = $this->getJson('/orders/data?sort=total:desc&pageSize=2&paging=cursor')->json('nextCursor');
         $this->getJson('/orders/data?sort=customer:asc&pageSize=2&paging=cursor&cursor='.$first)->assertStatus(422); // made for another sort
+    }
+
+    public function test_a_search_engine_answers_the_search_within_the_filters(): void
+    {
+        $body = $this->getJson('/orders/engine?search=vip&sort=total:desc')->assertOk()->json();
+        self::assertEqualsCanonicalizing([1, 3], array_column($body['rows'], 'id')); // 99 does not exist
+        self::assertSame(2, $body['totalRows']);
+        $body = $this->getJson('/orders/engine?search=vip&filters[0][field]=total&filters[0][op]=gt&filters[0][value]=1000')->json();
+        self::assertSame(array_values(array_filter([1, 3], fn ($id) => (float) Order::query()->find($id)->total > 1000)), array_column($body['rows'], 'id'));
+        self::assertSame([], $this->getJson('/orders/engine?search=nothing')->json('rows'));
+        self::assertCount(3, $this->getJson('/orders/engine?pageSize=3')->json('rows')); // no search: every row, the engine is not asked
     }
 }
 

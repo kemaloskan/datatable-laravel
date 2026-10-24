@@ -34,6 +34,8 @@ final class TableResponse implements Responsable
     private ?Closure $transform = null;
     private ?int $countLimit = 10_000;
     private ?int $maxResultWindow = 100_000;
+    private ?Closure $searchEngine = null;
+    private string $searchKeyColumn = 'id';
     private ?int $countTimeout = 250;
 
     private function __construct(private readonly EloquentBuilder|QueryBuilder $builder)
@@ -106,6 +108,23 @@ final class TableResponse implements Responsable
         return $this;
     }
 
+    /**
+     * Answer the search with a search engine instead of `LIKE` over the
+     * columns, e.g. Laravel Scout: `fn (string $search) => Order::search($search)->take(10_000)->keys()`.
+     * Only rows whose key it returns match; filters, sorting, paging and the
+     * count stay in the database. `$keyColumn` is the key of a query-builder
+     * table (Eloquent uses the model key).
+     *
+     * @param Closure(string $search): iterable<int|string> $keys
+     */
+    public function searchEngine(Closure $keys, string $keyColumn = 'id'): self
+    {
+        $this->searchEngine = $keys;
+        $this->searchKeyColumn = $keyColumn;
+
+        return $this;
+    }
+
     /** @param Closure(mixed $row): array<string, mixed> $transform e.g. fn ($order) => new OrderResource($order) */
     public function transform(Closure $transform): self
     {
@@ -119,6 +138,9 @@ final class TableResponse implements Responsable
     {
         try {
             $query = TableQuery::fromRequest($request, $this->maxPageSize, $this->defaultPageSize);
+            if ($this->searchEngine !== null && $query->search !== '') {
+                $query = $query->withSearchKeys(($this->searchEngine)($query->search), $this->searchKeyColumn);
+            }
             $fresh = clone $this->builder; // paginate() applies the query to the builder it gets
             $page = QueryApplier::paginate($this->builder, $query, $this->columns, $this->countLimit, $this->maxResultWindow, $this->countTimeout);
             // Footer totals (columns with aggregate()) only while the count is exact.

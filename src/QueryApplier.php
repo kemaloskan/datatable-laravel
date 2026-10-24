@@ -50,7 +50,16 @@ final class QueryApplier
         }
 
         $terms = $query->searchTerms();
-        if ($terms !== []) {
+        if ($query->searchKeys !== null && $query->search !== '') {
+            // A search engine answered the text: its keys, within the filters above.
+            if ($query->searchKeys === []) {
+                $builder->whereRaw('1 = 0');
+            } elseif ($builder instanceof EloquentBuilder) {
+                $builder->whereKey($query->searchKeys);
+            } else {
+                $builder->whereIn($query->searchKeyColumn, $query->searchKeys);
+            }
+        } elseif ($terms !== []) {
             $searchable = array_values(array_filter($byId, fn (Column $column) => $column->isSearchable()));
             if ($searchable === []) {
                 $builder->whereRaw('1 = 0'); // nothing is searchable, so nothing matches (as in the browser)

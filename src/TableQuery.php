@@ -38,7 +38,31 @@ final class TableQuery
         public readonly bool $cursorPaging = false,
         /** The `nextCursor` of the page before; null for the first page. */
         public readonly ?string $cursor = null,
+        /** Keys a search engine found for `$search` (see withSearchKeys()); null: search the columns. */
+        public readonly ?array $searchKeys = null,
+        public readonly string $searchKeyColumn = 'id',
     ) {
+    }
+
+    /**
+     * The same query with the search answered by a search engine (Laravel
+     * Scout, Meilisearch, …): only rows whose key is in `$keys` match, and the
+     * text is not looked for in the columns. Filters, sorting and paging stay
+     * in the database. `$column` is the key column of a query-builder table
+     * (Eloquent uses the model key).
+     *
+     * @param iterable<int|string> $keys
+     */
+    public function withSearchKeys(iterable $keys, string $column = 'id'): self
+    {
+        $list = [];
+        foreach ($keys as $key) {
+            if (is_int($key) || is_string($key)) {
+                $list[] = $key;
+            }
+        }
+
+        return new self($this->page, $this->pageSize, $this->sorting, $this->filters, $this->search, $this->cursorPaging, $this->cursor, array_values(array_unique($list)), $column);
     }
 
     public static function fromRequest(Request $request, int $maxPageSize = 100, int $defaultPageSize = 25): self
