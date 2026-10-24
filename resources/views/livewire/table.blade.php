@@ -59,6 +59,10 @@
         @include('acun-datatable::livewire.import')
     @endif
 
+    @if ($this->tableTask !== null)
+        @include('acun-datatable::livewire.task')
+    @endif
+
     @if ($selectable && $selectedCount > 0)
         <div class="adt-selection" role="group" aria-label="{{ $this->tableText('bulk_actions') }}">
             <span class="adt-selection-count" role="status">{{ $selectedExact

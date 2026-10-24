@@ -30,6 +30,7 @@ final class Action
     private ?string $icon = null;
     private bool $iconOnly = false;
     private bool $danger = false;
+    private bool $queued = false;
 
     private function __construct(private readonly string $id)
     {
@@ -90,6 +91,18 @@ final class Action
     {
         return $this->with('danger', $danger);
     }
+
+    /**
+     * A bulk action on many rows runs in a queued job (`RunTableTask`) as the
+     * same user, with the same selection; the table shows when it is done.
+     * Needs a queue worker.
+     */
+    public function queued(bool $queued = true): self
+    {
+        return $this->with('queued', $queued);
+    }
+
+    public function isQueued(): bool { return $this->queued; }
 
     public function handle(Closure $handler): self
     {

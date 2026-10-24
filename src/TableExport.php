@@ -93,30 +93,12 @@ final class TableExport
     /** Stream a CSV download (UTF-8 with BOM). `;` suits Turkish Excel. */
     public function csv(string $filename = 'export.csv', string $delimiter = ',', bool $guardFormulas = true): StreamedResponse
     {
-        if (! in_array($delimiter, [',', ';', "\t"], true)) {
-            throw new \InvalidArgumentException('delimiter must be ",", ";" or a tab.');
-        }
+        self::checkDelimiter($delimiter);
         $rows = $this->rows();
 
         return new StreamedResponse(function () use ($rows, $delimiter, $guardFormulas): void {
             $out = fopen('php://output', 'wb');
-            fwrite($out, "\u{FEFF}");
-            fputcsv($out, array_map(fn (Column $column) => self::guard($column->headerText(), $guardFormulas), $this->columns), $delimiter, '"', '', "\r\n");
-            foreach ($rows as $row) {
-                $fields = [];
-                foreach ($this->columns as $column) {
-                    [$kind, $value] = $this->cell($column, $row);
-                    $fields[] = match ($kind) {
-                        'null' => '',
-                        'boolean' => $value ? 'true' : 'false',
-                        'date' => $value instanceof \DateTimeInterface ? $value->format('Y-m-d') : (string) $value,
-                        'datetime' => $value instanceof \DateTimeInterface ? $value->format('Y-m-d H:i:s') : (string) $value,
-                        'text' => self::guard((string) $value, $guardFormulas),
-                        default => (string) $value,
-                    };
-                }
-                fputcsv($out, $fields, $delimiter, '"', '', "\r\n");
-            }
+            $this->writeCsv($out, $rows, $delimiter, $guardFormulas);
             fclose($out);
         }, 200, [
             'Content-Type' => 'text/csv; charset=UTF-8',
@@ -125,17 +107,67 @@ final class TableExport
         ]);
     }
 
+    /** Write the CSV to a file (e.g. in a queued export) instead of a download. */
+    public function saveCsv(string $path, string $delimiter = ',', bool $guardFormulas = true): void
+    {
+        self::checkDelimiter($delimiter);
+        $out = fopen($path, 'wb') ?: throw new \RuntimeException("Cannot write [{$path}].");
+        try {
+            $this->writeCsv($out, $this->rows(), $delimiter, $guardFormulas);
+        } finally {
+            fclose($out);
+        }
+    }
+
+    /** Write the xlsx to a file (e.g. in a queued export) instead of a download. */
+    public function saveXlsx(string $path, ?string $sheetName = null): void
+    {
+        $writer = new XlsxWriter($path, $sheetName ?? 'Sheet1');
+        $writer->header(array_map(fn (Column $column) => $column->headerText(), $this->columns));
+        foreach ($this->rows() as $row) {
+            $writer->row(array_map(fn (Column $column) => $this->cell($column, $row), $this->columns));
+        }
+        $writer->close();
+    }
+
+    private static function checkDelimiter(string $delimiter): void
+    {
+        if (! in_array($delimiter, [',', ';', "\t"], true)) {
+            throw new \InvalidArgumentException('delimiter must be ",", ";" or a tab.');
+        }
+    }
+
+    /**
+     * @param resource $out
+     * @param iterable<mixed> $rows
+     */
+    private function writeCsv($out, iterable $rows, string $delimiter, bool $guardFormulas): void
+    {
+        fwrite($out, "\u{FEFF}");
+        fputcsv($out, array_map(fn (Column $column) => self::guard($column->headerText(), $guardFormulas), $this->columns), $delimiter, '"', '', "\r\n");
+        foreach ($rows as $row) {
+            $fields = [];
+            foreach ($this->columns as $column) {
+                [$kind, $value] = $this->cell($column, $row);
+                $fields[] = match ($kind) {
+                    'null' => '',
+                    'boolean' => $value ? 'true' : 'false',
+                    'date' => $value instanceof \DateTimeInterface ? $value->format('Y-m-d') : (string) $value,
+                    'datetime' => $value instanceof \DateTimeInterface ? $value->format('Y-m-d H:i:s') : (string) $value,
+                    'text' => self::guard((string) $value, $guardFormulas),
+                    default => (string) $value,
+                };
+            }
+            fputcsv($out, $fields, $delimiter, '"', '', "\r\n");
+        }
+    }
+
     /** An xlsx download, built in a temporary file that is deleted after sending. */
     public function xlsx(string $filename = 'export.xlsx', ?string $sheetName = null): BinaryFileResponse
     {
         $path = tempnam(sys_get_temp_dir(), 'adt-xlsx-') ?: throw new \RuntimeException('Cannot create a temporary file.');
         try {
-            $writer = new XlsxWriter($path, $sheetName ?? pathinfo($filename, PATHINFO_FILENAME));
-            $writer->header(array_map(fn (Column $column) => $column->headerText(), $this->columns));
-            foreach ($this->rows() as $row) {
-                $writer->row(array_map(fn (Column $column) => $this->cell($column, $row), $this->columns));
-            }
-            $writer->close();
+            $this->saveXlsx($path, $sheetName ?? pathinfo($filename, PATHINFO_FILENAME));
         } catch (Throwable $error) {
             @unlink($path);
             throw $error;

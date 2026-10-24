@@ -13,6 +13,7 @@ use Acunsoft\DataTable\Laravel\TablePage;
 use Acunsoft\DataTable\Laravel\TableQuery;
 use Acunsoft\DataTable\Laravel\Support\FilterPanel;
 use Acunsoft\DataTable\Laravel\Support\PageItems;
+use Acunsoft\DataTable\Laravel\Support\TableTasks;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
@@ -79,6 +80,10 @@ trait WithDataTable
 
     /** @var array<string, mixed> widths in pixels per column ID (`resizableColumns()`) */
     public array $columnWidths = [];
+
+    /** The queued task (large export, queued bulk action) this table waits for; see checkTableTask(). */
+    #[Locked]
+    public ?string $tableTask = null;
 
     /** @var array<int, string> cursor paging: the cursor that opens each page seen so far, by page number */
     #[Locked]
@@ -1046,10 +1051,130 @@ trait WithDataTable
                 ? $export->xlsx("{$name}.xlsx", $name)
                 : $export->csv("{$name}.csv", $this->exportDelimiter());
         } catch (InvalidTableQuery $error) {
+            if ($this->queuedExports() && isset($error->errors['export'])) {
+                $this->queueTableTask('export', $format); // too many rows for a download now: prepare it in the background
+
+                return null;
+            }
             $this->addError('export', implode(' ', $error->errors));
 
             return null;
         }
+    }
+
+    // Queued tasks -----------------------------------------------------------
+
+    /**
+     * Exports past `exportLimit()` rows are prepared by a queued job instead
+     * of refused; the table offers a download link once the file is ready
+     * (signed, for the user who asked, deleted after download). Needs a queue
+     * worker. Default false.
+     */
+    protected function queuedExports(): bool
+    {
+        return false;
+    }
+
+    /** The most rows a queued export writes. Default 1,000,000 (xlsx allows 1,048,575). */
+    protected function queuedExportLimit(): int
+    {
+        return 1_000_000;
+    }
+
+    /** The filesystem disk queued exports are written to. Default `local`. */
+    protected function exportDisk(): string
+    {
+        return 'local';
+    }
+
+    /** Start a queued task as the current user, with this table's state. */
+    protected function queueTableTask(string $task, string $argument): void
+    {
+        $id = (string) \Illuminate\Support\Str::uuid();
+        $guard = \Illuminate\Support\Facades\Auth::getDefaultDriver();
+        $user = \Illuminate\Support\Facades\Auth::guard($guard)->id();
+        TableTasks::put($id, ['status' => 'queued', 'task' => $task, 'user' => $user, 'guard' => $guard]);
+        $state = array_filter($this->all(), fn ($value) => $value === null || is_scalar($value) || is_array($value));
+        unset($state['tableTask']);
+        $this->tableTask = $id;
+        dispatch(new \Acunsoft\DataTable\Laravel\Jobs\RunTableTask(static::class, $state, $task, $argument, $id, $user, $guard, app()->getLocale()));
+    }
+
+    /**
+     * The queued job's work, on a component rebuilt from the table's state:
+     * write the export to `exportDisk()`, or run the bulk action.
+     *
+     * @return array<string, mixed>
+     */
+    protected function runTableTask(string $task, string $argument, string $id): array
+    {
+        if ($task === 'bulk') {
+            $found = $this->findAction($this->dataTableBulkActions(), $argument) ?? throw new \RuntimeException("Unknown bulk action [{$argument}].");
+            $found->run($this->selectedQuery());
+
+            return [];
+        }
+        $query = $this->dataTableQuery();
+        $selected = $this->selectable() && $this->selectedCount() > 0;
+        $export = TableExport::for($selected ? $this->selectedQuery() : $this->query())
+            ->columns($this->dataTableVisibleColumns())
+            ->limit(min($this->queuedExportLimit(), \Acunsoft\DataTable\Laravel\Export\XlsxWriter::MAX_ROWS))
+            ->query($selected
+                ? TableQuery::fromArray(['sort' => implode(',', array_map(fn (array $rule) => "{$rule['field']}:{$rule['direction']}", $query->sorting))])
+                : $query, $this->dataTableColumns());
+        $format = $argument === 'xlsx' ? 'xlsx' : 'csv';
+        $temp = tempnam(sys_get_temp_dir(), 'adt-task-') ?: throw new \RuntimeException('Cannot create a temporary file.');
+        try {
+            $format === 'xlsx' ? $export->saveXlsx($temp, $this->exportFilename()) : $export->saveCsv($temp, $this->exportDelimiter());
+            $path = "acun-datatable/{$id}.{$format}";
+            \Illuminate\Support\Facades\Storage::disk($this->exportDisk())->putFileAs('acun-datatable', new \Illuminate\Http\File($temp), "{$id}.{$format}");
+        } finally {
+            @unlink($temp);
+        }
+
+        return ['disk' => $this->exportDisk(), 'path' => $path, 'name' => "{$this->exportFilename()}.{$format}"];
+    }
+
+    /** Polled while a task runs: shows its result once it is done. */
+    public function checkTableTask(): void
+    {
+        $state = $this->tableTask === null ? null : TableTasks::get($this->tableTask);
+        if ($state === null || ! TableTasks::belongsTo($state, \Illuminate\Support\Facades\Auth::guard($state['guard'] ?? null)->id())) {
+            $this->tableTask = null;
+
+            return;
+        }
+        if (($state['status'] ?? null) === 'ready' && ($state['task'] ?? null) === 'bulk') {
+            unset($this->rows); // show the changed rows
+        }
+    }
+
+    /** Hide the result of the finished task. */
+    public function dismissTableTask(): void
+    {
+        $this->tableTask = null;
+    }
+
+    /**
+     * For the view: the task's status (`queued`, `running`, `ready`, `failed`), its
+     * kind and, for a ready export, a signed download link valid for an hour.
+     *
+     * @return array{status: string, task: string, url: ?string, message: ?string}|null
+     */
+    protected function tableTaskView(): ?array
+    {
+        $state = $this->tableTask === null ? null : TableTasks::get($this->tableTask);
+        if ($state === null) {
+            return null;
+        }
+        $ready = ($state['status'] ?? null) === 'ready' && isset($state['path']);
+
+        return [
+            'status' => (string) ($state['status'] ?? 'queued'),
+            'task' => (string) ($state['task'] ?? 'export'),
+            'url' => $ready ? \Illuminate\Support\Facades\URL::temporarySignedRoute('acun-datatable.download', now()->addHour(), ['id' => $this->tableTask]) : null,
+            'message' => isset($state['message']) ? (string) $state['message'] : null,
+        ];
     }
 
     // Actions --------------------------------------------------------------
@@ -1080,6 +1205,12 @@ trait WithDataTable
     {
         $found = $this->findAction($this->dataTableBulkActions(), $action);
         if ($found === null || ! $found->isVisible() || $this->selectedCount() === 0) {
+            return null;
+        }
+        if ($found->isQueued()) {
+            $this->queueTableTask('bulk', $found->id());
+            $this->clearSelection();
+
             return null;
         }
         $result = $found->run($this->selectedQuery());

@@ -375,6 +375,28 @@ search, filters and sorting** (or only the selected rows when there is a
 selection), read in chunks on the server. Up to `exportLimit()` rows (100,000);
 beyond that the user is asked to narrow the filters. See `TableExport` below.
 
+#### Large exports and bulk actions in the queue
+
+```php
+protected function queuedExports(): bool { return true; }          // past exportLimit(): prepared in the queue
+protected function queuedExportLimit(): int { return 1_000_000; }  // the most a queued export writes
+protected function exportDisk(): string { return 'local'; }        // where the file waits
+
+protected function bulkActions(): array
+{
+    return [Action::make('archive')->label('Arşivle')->queued()->handle(fn ($selected) => $selected->update(['archived' => true]))];
+}
+```
+
+An export past `exportLimit()` (or a `queued()` bulk action) goes to a job,
+`RunTableTask`, and the table says so while you keep working. The job
+rebuilds the table from its state (search, filters, sorting, selection) **as
+the user who started it**, so `query()` and policies see the same user. When
+the file is ready the table shows "Download": a signed link valid for an
+hour, only for that user, and the file is deleted once sent. A failure shows
+a generic message (the details go to your log). Run a queue worker, and
+schedule `php artisan acun-datatable:prune` daily for files nobody downloaded.
+
 ```php
 use Acunsoft\DataTable\Laravel\Livewire\WithTableImport;
 
