@@ -151,5 +151,55 @@ final class LivewireResponsiveTest extends TestCase
         $html = Livewire::test(ResponsiveOrdersTable::class, ['fixed' => ['start' => 99, 'end' => 'x']])->html();
         self::assertStringContainsString('start = 10, end = 0;', $html); // clamped, non-numbers ignored
     }
+
+    public function test_columns_can_be_resized(): void
+    {
+        $html = Livewire::test(ResponsiveOrdersTable::class)->html();
+        self::assertStringNotContainsString('adt-resize', $html);
+        $table = Livewire::test(ResponsiveOrdersTable::class, ['resize' => true]);
+        $html = $table->html();
+        self::assertSame(4, substr_count($html, 'class="adt-resize" role="separator" aria-orientation="vertical" tabindex="0"'));
+        self::assertStringContainsString('aria-label="Resize Customer"', $html);
+        self::assertStringNotContainsString('adt-fixed-layout', $html);
+
+        $html = $table->call('resizeColumns', ['customer' => 210.6, 'city' => 9, 'note' => 99999, 'secret' => 300, '__actions' => 120])->html();
+        self::assertSame(['customer' => 211, 'city' => 48, 'note' => 2000, '__actions' => 120], $table->get('columnWidths'));
+        self::assertStringContainsString('adt-fixed-layout', $html);
+        self::assertStringContainsString('style="--adt-actions-width: 120px"', $html);
+        self::assertMatchesRegularExpression('/data-column-id="customer" wire:key="adt-th-customer"\s+style="width: 211px"/', $html);
+        self::assertStringContainsString('aria-valuenow="211"', $html);
+
+        $table->call('resizeColumns', ['customer' => null]);
+        self::assertArrayNotHasKey('customer', $table->get('columnWidths'));
+        $table->set('columnWidths', ['city' => 'drop table', 'total' => '150']); // tampered: read through validation
+        self::assertStringContainsString('style="width: 150px"', $table->html());
+        self::assertStringNotContainsString('drop table', $table->html());
+    }
+
+    public function test_columns_can_be_moved(): void
+    {
+        $table = Livewire::test(ResponsiveOrdersTable::class);
+        $table->call('moveColumn', 'note', 0);
+        self::assertSame([], $table->get('columnOrder')); // off unless reorderableColumns()
+
+        $table = Livewire::test(ResponsiveOrdersTable::class, ['reorder' => true]);
+        $html = $table->html();
+        self::assertSame(4, substr_count($html, 'draggable="true"'));
+        self::assertStringContainsString('$wire.moveColumnNextTo(from, $el.dataset.columnId, after)', $html);
+        self::assertStringContainsString('aria-label="Move Customer up"', $html);
+
+        $table->call('moveColumn', 'note', 0);
+        self::assertSame(['note', 'customer', 'city', 'total'], $table->get('columnOrder'));
+        preg_match_all('/<th scope="col" class="adt-th[^"]*"\s+data-column-id="([^"]+)"/', $table->html(), $headers);
+        self::assertSame(['note', 'customer', 'city', 'total'], $headers[1]);
+        $table->call('moveColumnNextTo', 'customer', 'total', true);
+        self::assertSame(['note', 'city', 'total', 'customer'], $table->get('columnOrder'));
+        $table->call('moveColumn', 'nope', 0);
+        self::assertSame(['note', 'city', 'total', 'customer'], $table->get('columnOrder'));
+        self::assertStringContainsString('Reset columns', $table->html());
+        $table->call('resetColumns');
+        self::assertSame([], $table->get('columnOrder'));
+        self::assertStringNotContainsString('Reset columns', $table->html());
+    }
 }
 

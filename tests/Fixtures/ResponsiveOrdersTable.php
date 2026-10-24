@@ -25,6 +25,10 @@ final class ResponsiveOrdersTable extends \Livewire\Component
     /** @var array{start?: int, end?: int} */
     public array $fixed = [];
 
+    public bool $resize = false;
+
+    public bool $reorder = false;
+
     protected function columns(): array
     {
         return [
@@ -58,6 +62,16 @@ final class ResponsiveOrdersTable extends \Livewire\Component
     protected function scrollY(): ?string
     {
         return $this->height;
+    }
+
+    protected function resizableColumns(): bool
+    {
+        return $this->resize;
+    }
+
+    protected function reorderableColumns(): bool
+    {
+        return $this->reorder;
     }
 
     protected function fixedColumns(): array

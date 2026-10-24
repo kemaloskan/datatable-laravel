@@ -97,24 +97,39 @@
         @break
 
     @case('columns')
-        @if (count($allColumns) > 1 && collect($allColumns)->contains(fn ($column) => $column->isHideable()))
+        @if (count($allColumns) > 1 && (collect($allColumns)->contains(fn ($column) => $column->isHideable()) || $this->reorderableColumns() || $this->resizableColumns()))
             <details class="adt-columns" wire:ignore.self x-data @click.outside="$el.open = false" @keydown.escape="$el.open = false; $el.querySelector('summary').focus()">
                 <summary>
                     <svg class="adt-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M9 4v16M15 4v16M4 4h16v16H4z"/></svg>
                     {{ $this->tableText('columns') }}
                 </summary>
+                @php $ordered = $this->orderedColumns(); $reorderable = $this->reorderableColumns(); @endphp
                 <fieldset>
                     <legend>{{ $this->tableText('show_columns') }}</legend>
-                    @foreach ($allColumns as $column)
-                        @php $shown = ! in_array($column->id(), $hiddenIds, true); @endphp
+                    @foreach ($ordered as $position => $column)
+                        @php $shown = ! in_array($column->id(), $hiddenIds, true); $jsId = \Illuminate\Support\Js::from($column->id()); @endphp
+                        @if ($reorderable) <div class="adt-column-item" wire:key="adt-column-{{ $column->id() }}"> @endif
                         <label>
                             <input type="checkbox" value="{{ $column->id() }}"
-                                wire:click="toggleColumn({{ \Illuminate\Support\Js::from($column->id()) }})"
+                                wire:click="toggleColumn({{ $jsId }})"
                                 @checked($shown)
                                 @disabled(! $column->isHideable() || ($shown && count($columns) === 1))>
                             <span>{{ $column->headerText() }}</span>
                         </label>
+                        @if ($reorderable)
+                            @foreach (['up' => -1, 'down' => 1] as $direction => $delta)
+                                @php $to = $position + $delta; $off = $to < 0 || $to >= count($ordered); @endphp
+                                <button type="button" class="adt-move" aria-label="{{ $this->tableText('move_column_'.$direction, ['name' => $column->headerText()]) }}"
+                                    @if ($off) aria-disabled="true" @else wire:click="moveColumn({{ $jsId }}, {{ $to }})" @endif>
+                                    <svg class="adt-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="{{ $direction === 'up' ? 'M18 15l-6-6-6 6' : 'M6 9l6 6 6-6' }}"/></svg>
+                                </button>
+                            @endforeach
+                            </div>
+                        @endif
                     @endforeach
+                    @if ($this->columnsChanged())
+                        <button type="button" class="adt-columns-reset" wire:click="resetColumns">{{ $this->tableText('reset_columns') }}</button>
+                    @endif
                 </fieldset>
             </details>
         @endif

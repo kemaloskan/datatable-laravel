@@ -1,0 +1,10 @@
+{{--
+  Drag a header onto another to move the column (reorderableColumns()). The
+  dragged column's ID waits on the table while the pointer moves; the drop
+  asks the server to move it before or after the target. Printed inside the
+  <th> tag, so the scripts use single quotes only.
+--}}
+x-on:dragstart="if ($el.closest('.adt-resizing')) { $event.preventDefault(); return; } $el.closest('table').dataset.adtDragging = $el.dataset.columnId; $event.dataTransfer.setData('text/plain', $el.dataset.columnId); $event.dataTransfer.effectAllowed = 'move'; $el.classList.add('adt-dragging')"
+x-on:dragover="const from = $el.closest('table').dataset.adtDragging; if (! from || from === $el.dataset.columnId) return; $event.preventDefault(); $event.dataTransfer.dropEffect = 'move'; const box = $el.getBoundingClientRect(); const after = $event.clientX > box.left + box.width / 2; $el.closest('tr').querySelectorAll('.adt-drop-before, .adt-drop-after').forEach(node => node !== $el && node.classList.remove('adt-drop-before', 'adt-drop-after')); $el.classList.toggle('adt-drop-before', ! after); $el.classList.toggle('adt-drop-after', after)"
+x-on:drop="const table = $el.closest('table'); const from = table.dataset.adtDragging; const after = $el.classList.contains('adt-drop-after'); delete table.dataset.adtDragging; $el.closest('tr').querySelectorAll('.adt-drop-before, .adt-drop-after, .adt-dragging').forEach(node => node.classList.remove('adt-drop-before', 'adt-drop-after', 'adt-dragging')); if (from && from !== $el.dataset.columnId) { $event.preventDefault(); $wire.moveColumnNextTo(from, $el.dataset.columnId, after); }"
+x-on:dragend="delete $el.closest('table').dataset.adtDragging; $el.closest('tr').querySelectorAll('.adt-drop-before, .adt-drop-after, .adt-dragging').forEach(node => node.classList.remove('adt-drop-before', 'adt-drop-after', 'adt-dragging'))"

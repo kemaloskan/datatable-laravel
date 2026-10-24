@@ -27,6 +27,9 @@
     $levels = collect($columns)->map(fn ($column, $index) => $column->priorityAt($index))->values()->all();
     if ($rowActions !== []) { $levels[] = 2; }
     $span = count($columns) + ($selectable ? 1 : 0) + ($rowActions === [] ? 0 : 1) + ($expandable ? 1 : 0);
+    $widths = $this->columnWidthsPx();
+    $resizable = $this->resizableColumns();
+    $reorderable = $this->reorderableColumns();
     $fixed = $this->fixedColumns();
     $fixedStart = is_int($fixed['start'] ?? null) ? max(0, min(10, $fixed['start'])) : 0;
     $fixedEnd = is_int($fixed['end'] ?? null) ? max(0, min(10, $fixed['end'])) : 0;
@@ -80,7 +83,8 @@
         wire:loading.class="adt-loading" wire:loading.attr="aria-busy">
         <div class="adt-notice" role="status" wire:loading>{{ $this->tableText('loading') }}</div>
         <div class="adt-scroll">
-            <table @class(['adt-table', 'adt-has-p2' => $collapsible && in_array(2, $levels, true), 'adt-has-p3' => $collapsible && in_array(3, $levels, true), 'adt-has-detail' => $detailView !== null])
+            <table @class(['adt-table', 'adt-has-p2' => $collapsible && in_array(2, $levels, true), 'adt-has-p3' => $collapsible && in_array(3, $levels, true), 'adt-has-detail' => $detailView !== null, 'adt-fixed-layout' => $widths !== []])
+                @if (isset($widths['__actions'])) style="--adt-actions-width: {{ $widths['__actions'] }}px" @endif
                 @if ($selectable) x-data="{ anchor: null }" @endif>
                 @if ($this->caption() !== null)
                     <caption>{{ $this->caption() }}</caption>
@@ -108,6 +112,9 @@
                                 $rule = $position === false ? null : $sorting[$position];
                             @endphp
                             <th scope="col" class="adt-th{{ $collapsible ? ' adt-col--p'.$column->priorityAt($index) : '' }}{{ $column->isNumeric() ? ' adt-num' : '' }}"
+                                data-column-id="{{ $column->id() }}" wire:key="adt-th-{{ $column->id() }}"
+                                @if (isset($widths[$column->id()])) style="width: {{ $widths[$column->id()] }}px" @endif
+                                @if ($reorderable) draggable="true" @include('acun-datatable::livewire.header-drag') @endif
                                 @if ($position === 0) aria-sort="{{ $rule['direction'] === 'asc' ? 'ascending' : 'descending' }}" @endif>
                                 @if ($column->isSortable())
                                     <button type="button"
@@ -117,6 +124,9 @@
                                     </button>
                                 @else
                                     {{ $column->headerText() }}
+                                @endif
+                                @if ($resizable)
+                                    @include('acun-datatable::livewire.resize-handle', ['width' => $widths[$column->id()] ?? null])
                                 @endif
                             </th>
                         @endforeach

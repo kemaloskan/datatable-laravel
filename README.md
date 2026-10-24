@@ -265,6 +265,19 @@ The tools menu holds everything that is not about the rows on screen: **export**
 controls) and **import** (`WithTableImport`). It only appears when at least one
 of them is on.
 
+### Resizing and moving columns
+
+```php
+protected function resizableColumns(): bool { return true; }  // drag a header's edge, ←/→ on it
+protected function reorderableColumns(): bool { return true; } // drag headers; ↑/↓ in the column menu
+```
+
+Widths and order are component state (`$columnWidths`, `$columnOrder`), read
+back through validation (known columns only, 48–2000 px). A resize sends the
+widths once, when the drag ends; the first one fixes every column at its
+current width so nothing else jumps. "Reset columns" in the column menu
+restores both.
+
 ### Fixed columns
 
 ```php
