@@ -17,7 +17,7 @@ final class TableResponseTest extends TestCase
             Column::make('customer')->sortable()->filterable()->searchUsing('customer_search'),
             Column::make('total')->type('decimal')->sortable()->filterable(),
         ];
-        Route::get('/orders/data', fn () => TableResponse::for(Order::query())->columns($columns())->maxPageSize(3, 2));
+        Route::match(['get', 'post'], '/orders/data', fn () => TableResponse::for(Order::query())->columns($columns())->maxPageSize(3, 2));
         Route::get('/orders/custom', fn () => TableResponse::for(Order::query())->columns($columns())
             ->transform(fn (Order $order) => ['name' => mb_strtoupper($order->customer)]));
     }
@@ -32,6 +32,15 @@ final class TableResponseTest extends TestCase
             ],
             'totalRows' => 5,
         ]);
+    }
+
+    public function test_reads_the_query_from_a_post_form_or_json_body(): void
+    {
+        $expected = ['rows' => [['id' => 4, 'customer' => 'Iğdır Ticaret', 'total' => '5000.00']], 'totalRows' => 5];
+        $body = ['sort' => 'total:desc', 'page' => '1', 'pageSize' => '1', 'filters' => [['field' => 'total', 'op' => 'gt', 'value' => '1']]];
+        $this->post('/orders/data', $body, ['Accept' => 'application/json'])->assertOk()->assertExactJson($expected);
+        $this->postJson('/orders/data', $body)->assertOk()->assertExactJson($expected);
+        $this->postJson('/orders/data?pageSize=3', ['pageSize' => '1'])->assertOk()->assertJsonCount(1, 'rows'); // the body, not the URL
     }
 
     public function test_never_sends_undeclared_attributes(): void

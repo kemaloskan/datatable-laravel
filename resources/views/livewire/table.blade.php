@@ -20,6 +20,7 @@
     $responsive = in_array($this->responsive(), ['cards', 'scroll', 'collapse', 'modal'], true) ? $this->responsive() : 'cards';
     $collapsible = in_array($responsive, ['collapse', 'modal'], true);
     $size = in_array($this->tableSize(), ['sm', 'md', 'lg'], true) ? $this->tableSize() : 'md';
+    $scrollY = is_string($this->scrollY()) && preg_match('/^\d+(\.\d+)?(px|rem|em|vh|dvh|svh|%)$/', trim($this->scrollY())) ? trim($this->scrollY()) : null;
     $levels = collect($columns)->map(fn ($column, $index) => $column->priorityAt($index))->values()->all();
     if ($rowActions !== []) { $levels[] = 2; }
     $span = count($columns) + ($selectable ? 1 : 0) + ($rowActions === [] ? 0 : 1) + ($collapsible ? 1 : 0);
@@ -53,7 +54,9 @@
         </div>
     @endif
 
-    <div class="adt-table-wrap adt-responsive--{{ $responsive }}" wire:loading.class="adt-loading" wire:loading.attr="aria-busy">
+    <div @class(['adt-table-wrap', 'adt-responsive--'.$responsive, 'adt-sticky-header' => $this->stickyHeader(), 'adt-scroll-y' => $scrollY !== null])
+        @if ($scrollY !== null) style="--adt-scroll-y: {{ $scrollY }}" @endif
+        wire:loading.class="adt-loading" wire:loading.attr="aria-busy">
         <div class="adt-notice" role="status" wire:loading>{{ $this->tableText('loading') }}</div>
         <div class="adt-scroll">
             <table @class(['adt-table', 'adt-has-p2' => $collapsible && in_array(2, $levels, true), 'adt-has-p3' => $collapsible && in_array(3, $levels, true)])>

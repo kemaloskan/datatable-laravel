@@ -76,4 +76,14 @@ final class LivewireResponsiveTest extends TestCase
         $this->expectException(InvalidArgumentException::class);
         Column::make('a')->priority(4);
     }
+
+    public function test_sticky_header_and_fixed_height(): void
+    {
+        self::assertMatchesRegularExpression('/class="adt-table-wrap adt-responsive--cards adt-sticky-header"/', Livewire::test(ResponsiveOrdersTable::class, ['sticky' => true])->html());
+        $html = Livewire::test(ResponsiveOrdersTable::class, ['height' => '60vh'])->html();
+        self::assertStringContainsString('adt-scroll-y', $html);
+        self::assertStringContainsString('style="--adt-scroll-y: 60vh"', $html);
+        $html = Livewire::test(ResponsiveOrdersTable::class, ['height' => '1px;color:red'])->html();
+        self::assertStringNotContainsString('adt-scroll-y', $html); // not a plain length: ignored
+    }
 }

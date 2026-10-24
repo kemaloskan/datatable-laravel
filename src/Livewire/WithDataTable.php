@@ -52,7 +52,7 @@ trait WithDataTable
     #[Url(except: [])]
     public array $filters = [];
 
-    #[Url(except: 25)]
+    /** Rows per page; in the URL as `pageSize` while it differs from `defaultPageSize()`. */
     public int $pageSize = 25;
 
     /** @var array<int, mixed> IDs of hidden columns (presentation only: they still sort, filter and search) */
@@ -80,6 +80,23 @@ trait WithDataTable
     protected function pageSizeOptions(): array
     {
         return [10, 25, 50, 100];
+    }
+
+    /**
+     * Rows per page before the user picks another; one of `pageSizeOptions()`.
+     * Default: 25 when it is an option, else the first option.
+     */
+    protected function defaultPageSize(): int
+    {
+        $sizes = $this->pageSizeOptions();
+
+        return in_array(25, $sizes, true) ? 25 : $sizes[0];
+    }
+
+    /** Livewire: `pageSize` in the URL, left out while it is the default. */
+    protected function queryStringWithDataTable(): array
+    {
+        return ['pageSize' => ['except' => $this->defaultPageSize()]];
     }
 
     /**
@@ -150,6 +167,30 @@ trait WithDataTable
     protected function tableSize(): string
     {
         return 'md';
+    }
+
+    /**
+     * Keep the header row at the top of the window while the page scrolls
+     * (DataTables `fixedHeader`). Below a fixed top bar set `--adt-sticky-top`.
+     */
+    /** Shift+click adds a second sort column. Return false to always sort by one column. */
+    protected function multiSort(): bool
+    {
+        return true;
+    }
+
+    protected function stickyHeader(): bool
+    {
+        return false;
+    }
+
+    /**
+     * A fixed table height to scroll inside, the header staying in place
+     * (DataTables `scrollY`): a CSS length such as `60vh` or `480px`; `null` off.
+     */
+    protected function scrollY(): ?string
+    {
+        return null;
     }
 
     /** Show "Print" in the tools menu (prints the visible page without the controls). */
@@ -309,6 +350,9 @@ trait WithDataTable
     /** Apply `Column::hidden()` unless the URL already says which columns are hidden. */
     public function mountWithDataTable(): void
     {
+        if (! request()->query->has('pageSize')) {
+            $this->pageSize = $this->defaultPageSize();
+        }
         if ($this->hiddenColumns === []) {
             $this->hiddenColumns = array_values(array_map(
                 fn (Column $column) => $column->id(),
@@ -362,6 +406,7 @@ trait WithDataTable
      */
     public function sortBy(string $field, bool $additive = false): void
     {
+        $additive = $additive && $this->multiSort();
         $column = $this->dataTableColumn($field);
         if ($column === null || ! $column->isSortable()) {
             return;
@@ -658,7 +703,7 @@ trait WithDataTable
     {
         $sizes = $this->pageSizeOptions();
         $max = max($sizes);
-        $pageSize = in_array($this->pageSize, $sizes, true) ? $this->pageSize : (in_array(25, $sizes, true) ? 25 : $sizes[0]);
+        $pageSize = in_array($this->pageSize, $sizes, true) ? $this->pageSize : $this->defaultPageSize();
 
         $sort = [];
         foreach ($this->sort === '' ? [] : explode(',', $this->sort) as $part) {

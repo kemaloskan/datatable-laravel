@@ -16,6 +16,10 @@ final class ResponsiveOrdersTable extends \Livewire\Component
 
     public string $density = 'md';
 
+    public bool $sticky = false;
+
+    public ?string $height = null;
+
     protected function columns(): array
     {
         return [
@@ -39,6 +43,16 @@ final class ResponsiveOrdersTable extends \Livewire\Component
     protected function responsive(): string
     {
         return $this->mode;
+    }
+
+    protected function stickyHeader(): bool
+    {
+        return $this->sticky;
+    }
+
+    protected function scrollY(): ?string
+    {
+        return $this->height;
     }
 
     protected function tableSize(): string

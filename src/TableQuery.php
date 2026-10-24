@@ -39,7 +39,12 @@ final class TableQuery
 
     public static function fromRequest(Request $request, int $maxPageSize = 100, int $defaultPageSize = 25): self
     {
-        return self::fromArray($request->query(), $maxPageSize, $defaultPageSize);
+        // GET: the URL; POST (datatable-http with method 'POST'): the form or JSON body.
+        $input = $request->isMethod('GET') || $request->isMethod('HEAD')
+            ? $request->query()
+            : ($request->isJson() ? $request->json()->all() : $request->request->all());
+
+        return self::fromArray($input, $maxPageSize, $defaultPageSize);
     }
 
     /**

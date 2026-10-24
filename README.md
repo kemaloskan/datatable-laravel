@@ -34,8 +34,16 @@ Route::get('/orders/data', function () {
 });
 ```
 
-The browser side: `createHttpDataSource({ url: '/orders/data' })` (it sends the
-wire format below and reads `{ rows, totalRows }`).
+The browser side, in one call with `@acunsoft/datatable`:
+
+```js
+new AcunDataTable('#orders', { serverSide: true, ajax: { url: '/orders/data', method: 'POST' }, language: 'tr' });
+```
+
+or `createHttpDataSource({ url: '/orders/data' })` with the separate packages.
+The query is read from the URL for `GET` and from the form or JSON body for
+`POST` (register the route with `Route::match(['get', 'post'], …)`; POST needs
+the CSRF token, which `AcunDataTable` sends from `<meta name="csrf-token">`).
 
 ## Livewire table
 
@@ -170,6 +178,21 @@ protected function pagingOptions(): array
     return ['siblings' => 2, 'boundaries' => 1, 'firstLast' => true]; // « ‹ 1 … 3 4 5 6 7 … 200 › »
 }
 ```
+
+**Rows per page.** `pageSizeOptions()` sets the choices of the select and
+`defaultPageSize()` the size at the start (default 25, or the first option);
+`pageSize` stays in the URL only while it differs from the default.
+
+```php
+protected function pageSizeOptions(): array { return [10, 20, 50]; }
+protected function defaultPageSize(): int { return 20; }
+```
+
+**Header and sorting.** `stickyHeader()` keeps the header at the top of the
+window while the page scrolls (DataTables `fixedHeader`; under a fixed top bar
+set `--adt-sticky-top: 64px`), `scrollY()` gives the table a fixed height
+that scrolls inside with the header in place (`'60vh'`), and `multiSort()`
+returning `false` makes Shift+click sort by one column only.
 
 **Narrow screens and sizes.** Choose how the table behaves on phones and how
 dense it is:

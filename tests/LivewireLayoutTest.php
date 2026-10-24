@@ -8,6 +8,7 @@ use Acunsoft\DataTable\Laravel\DataTableServiceProvider;
 use Acunsoft\DataTable\Laravel\Support\PageItems;
 use Acunsoft\DataTable\Laravel\Tests\Fixtures\LayoutOrdersTable;
 use Acunsoft\DataTable\Laravel\Tests\Fixtures\Order;
+use Acunsoft\DataTable\Laravel\Tests\Fixtures\PageSizeOrdersTable;
 use Acunsoft\DataTable\Laravel\Tests\Fixtures\OrdersImportTable;
 use Acunsoft\DataTable\Laravel\Tests\Fixtures\OrdersTable;
 use Illuminate\Support\Facades\View;
@@ -109,6 +110,28 @@ final class LivewireLayoutTest extends TestCase
         self::assertMatchesRegularExpression('/<td data-label="Total"\s+class="adt-num"\s*>/', $html);
         self::assertStringContainsString('<th scope="col" class="adt-th adt-num"', $html);
         self::assertStringContainsString('&lt;i&gt;x&lt;/i&gt;', $html); // plain cells stay escaped
+    }
+
+    public function test_page_size_options_and_default_are_configurable(): void
+    {
+        $table = Livewire::test(PageSizeOrdersTable::class);
+        self::assertSame(3, $table->instance()->rows->perPage()); // defaultPageSize()
+        self::assertMatchesRegularExpression('/<option value="3"\s+selected>3<\/option>/', $table->html());
+        self::assertSame(['2', '3', '25'], $this->sizeOptions($table->html()));
+        $table->set('pageSize', 25);
+        self::assertSame(25, $table->instance()->rows->perPage());
+
+        self::assertSame(2, Livewire::withQueryParams(['pageSize' => '2'])->test(PageSizeOrdersTable::class)->instance()->rows->perPage());
+        self::assertSame(3, Livewire::withQueryParams(['pageSize' => '7'])->test(PageSizeOrdersTable::class)->instance()->rows->perPage()); // not an option
+    }
+
+    /** @return list<string> */
+    private function sizeOptions(string $html): array
+    {
+        preg_match('/<select class="adt-control" wire:model.live="pageSize">(.*?)<\/select>/s', $html, $select);
+        preg_match_all('/<option value="(\d+)"/', $select[1], $values);
+
+        return $values[1];
     }
 
     /** @return list<string> */
