@@ -402,16 +402,19 @@ final class QueryApplier
             // MariaDB is often reached through the mysql driver: ask the server, not the driver name.
             $maria = $driver === 'mariadb' || (method_exists($connection, 'isMaria') && $connection->isMaria());
             $variable = $maria ? 'max_statement_time' : 'max_execution_time';
+            // Written as numbers, not bound: MariaDB refuses a bound text value ("0.000000") for its
+            // numeric variable. Both values are numbers we made (cast), never text from a request.
+            $number = fn (mixed $value): string => $maria ? rtrim(rtrim(sprintf('%.6F', (float) $value), '0'), '.') : (string) (int) $value;
             try {
-                $previous = $connection->selectOne("select @@session.{$variable} as value")->value;
-                $connection->statement("set session {$variable} = ?", [$maria ? $ms / 1000 : $ms]);
+                $previous = $number($connection->selectOne("select @@session.{$variable} as value")->value);
+                $connection->statement("set session {$variable} = ".$number($maria ? $ms / 1000 : $ms));
             } catch (QueryException) {
                 return null; // e.g. MariaDB behind the mysql driver: no time limit available
             }
             try {
                 return $count();
             } finally {
-                $connection->statement("set session {$variable} = ?", [$previous]);
+                $connection->statement("set session {$variable} = {$previous}");
             }
         } catch (QueryException $error) {
             if (! self::timedOut($error, $driver)) {

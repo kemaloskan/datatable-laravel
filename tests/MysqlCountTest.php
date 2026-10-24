@@ -34,12 +34,12 @@ final class MysqlCountTest extends TestCase
             self::markTestSkipped('Set ADT_TEST_MYSQL to run the MySQL/MariaDB tests.');
         }
         $my = DB::connection('my');
-        $my->statement('create temporary table adt_digits (d int not null)');
-        $my->statement('insert into adt_digits values (0),(1),(2),(3),(4),(5),(6),(7),(8),(9)');
         $my->statement('create temporary table adt_count_test (n int not null)');
-        // 100,000 rows from five copies of the digits.
-        $my->statement('insert into adt_count_test select a.d + 10 * b.d + 100 * c.d + 1000 * e.d + 10000 * f.d + 1
-            from adt_digits a, (select d from adt_digits) b, (select d from adt_digits) c, (select d from adt_digits) e, (select d from adt_digits) f');
+        // 100,000 rows from five copies of the digits (a CTE: MySQL cannot open a temporary table twice in one query).
+        $my->statement('insert into adt_count_test
+            with digits (d) as (select 0 union all select 1 union all select 2 union all select 3 union all select 4
+                union all select 5 union all select 6 union all select 7 union all select 8 union all select 9)
+            select a.d + 10 * b.d + 100 * c.d + 1000 * e.d + 10000 * f.d + 1 from digits a, digits b, digits c, digits e, digits f');
     }
 
     private function variable(): string
