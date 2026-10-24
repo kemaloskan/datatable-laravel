@@ -16,7 +16,7 @@ use Illuminate\Http\Request;
  */
 final class TableQuery
 {
-    public const OPERATORS = ['contains', 'startsWith', 'eq', 'gt', 'lt', 'between', 'in', 'empty', 'notEmpty'];
+    public const OPERATORS = ['contains', 'startsWith', 'eq', 'gt', 'lt', 'gte', 'lte', 'between', 'in', 'empty', 'notEmpty'];
     public const MAX_PAGE = 10_000_000;
     public const MAX_SORT_RULES = 5;
     public const MAX_FILTERS = 20;

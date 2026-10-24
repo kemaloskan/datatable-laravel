@@ -11,6 +11,7 @@ use Acunsoft\DataTable\Laravel\QueryApplier;
 use Acunsoft\DataTable\Laravel\TableExport;
 use Acunsoft\DataTable\Laravel\TablePage;
 use Acunsoft\DataTable\Laravel\TableQuery;
+use Acunsoft\DataTable\Laravel\Support\FilterPanel;
 use Acunsoft\DataTable\Laravel\Support\PageItems;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Contracts\View\View;
@@ -128,9 +129,9 @@ trait WithDataTable
     /**
      * Where the controls go: a bar above and one below the table, each with a
      * start and an end side. Return only the slots you change; the others keep
-     * their defaults: `topStart` page size and search, `topEnd` column menu and
-     * tools, `bottomStart` info, `bottomEnd` pages. A slot is a list of features:
-     * `pageSize`, `search`, `columns`, `tools` (export, print and import menu),
+     * their defaults: `topStart` page size and search, `topEnd` filters, column
+     * menu and tools, `bottomStart` info, `bottomEnd` pages. A slot is a list of features:
+     * `pageSize`, `search`, `filters`, `columns`, `tools` (export, print and import menu),
      * `info`, `paging`, or the name of your own Blade view, which is included
      * with the table's variables (`$rows`, `$columns`, …). `[]` empties a slot.
      *
@@ -445,6 +446,35 @@ trait WithDataTable
         }
         $this->filters = array_slice($rules, 0, TableQuery::MAX_FILTERS);
         $this->tableChanged();
+    }
+
+    /**
+     * Set one filter-panel column (`Column::filter()` / `options()`) from its
+     * control's values: `text`, `selected`, `min` / `max` or `flag`; empty
+     * values remove its filter. Values are checked like every other rule.
+     *
+     * @param array<string, mixed> $values
+     */
+    public function filterBy(string $field, array $values = []): void
+    {
+        $column = $this->dataTableColumn($field);
+        if ($column === null || ! $column->hasFilter()) {
+            return;
+        }
+        $next = array_values(array_filter(FilterPanel::rules($column, $values), fn (array $rule) => $this->validFilter($rule)));
+        $others = array_values(array_filter($this->wireFilters($this->dataTableQuery()), fn (array $rule) => $rule['field'] !== $field));
+        $this->filters = array_slice([...$others, ...$next], 0, TableQuery::MAX_FILTERS);
+        $this->tableChanged();
+        $this->dispatch('adt-filters-synced'); // inputs the user typed in follow the new values
+    }
+
+    /** Remove the filters of the filter-panel columns (other filters stay). */
+    public function clearPanelFilters(): void
+    {
+        $panel = array_map(fn (Column $column) => $column->id(), array_filter($this->dataTableColumns(), fn (Column $column) => $column->hasFilter()));
+        $this->filters = array_values(array_filter($this->wireFilters($this->dataTableQuery()), fn (array $rule) => ! in_array($rule['field'], $panel, true)));
+        $this->tableChanged();
+        $this->dispatch('adt-filters-synced');
     }
 
     public function removeFilter(int $index): void
@@ -766,7 +796,7 @@ trait WithDataTable
         $layout = [];
         foreach ([
             'topStart' => ['pageSize', 'search'],
-            'topEnd' => ['columns', 'tools'],
+            'topEnd' => ['filters', 'columns', 'tools'],
             'bottomStart' => ['info'],
             'bottomEnd' => ['paging'],
         ] as $slot => $default) {

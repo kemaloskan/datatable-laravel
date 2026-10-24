@@ -79,6 +79,11 @@ final class QueryApplierTest extends TestCase
         self::assertSame(['Iğdır Ticaret'], $this->where(['field' => 'created', 'op' => 'gt', 'value' => '2026-10-23']));
         self::assertSame(['Ali Kaya'], $this->where(['field' => 'created', 'op' => 'lt', 'value' => '2026-10-23']));
         self::assertSame(['Ayşe Yılmaz', 'Ali Kaya', 'Can Öztürk'], $this->where(['field' => 'created', 'op' => 'between', 'value' => ['2026-10-22', '2026-10-23']]));
+        // gte / lte include the whole day; numbers include the value
+        self::assertSame(['Ayşe Yılmaz', 'Can Öztürk', 'Iğdır Ticaret'], $this->where(['field' => 'created', 'op' => 'gte', 'value' => '2026-10-23']));
+        self::assertSame(['Ayşe Yılmaz', 'Ali Kaya', 'Can Öztürk'], $this->where(['field' => 'created', 'op' => 'lte', 'value' => '2026-10-23']));
+        self::assertSame(['Ayşe Yılmaz', 'Can Öztürk', 'Iğdır Ticaret'], $this->where(['field' => 'total', 'op' => 'gte', 'value' => '99.90']));
+        self::assertSame(['Ali Kaya', 'Can Öztürk', 'Deniz Şahin'], $this->where(['field' => 'total', 'op' => 'lte', 'value' => '99.90']));
         // datetime with a time: an exact instant, read in the app time zone (Europe/Istanbul)
         self::assertSame(['Ayşe Yılmaz'], $this->where(['field' => 'created', 'op' => 'eq', 'value' => '2026-10-23T14:05:00+03:00']));
         self::assertSame(['Ayşe Yılmaz'], $this->where(['field' => 'created', 'op' => 'eq', 'value' => '2026-10-23T11:05:00Z']));

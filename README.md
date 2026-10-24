@@ -179,6 +179,17 @@ protected function pagingOptions(): array
 }
 ```
 
+**Filter panel.** `->filter()` puts a column in the "Filters" menu with a
+control for its type (text, min–max, from–to, yes/no); `->options([...])`
+gives ticks instead. Active filters show as removable chips above the table;
+your own buttons can call `filterBy('status', ['selected' => ['paid']])`,
+`clearPanelFilters()` clears the panel's filters and keeps the others.
+
+```php
+Column::make('total')->header('Tutar')->type('decimal')->filter(),
+Column::make('status')->header('Durum')->options(['paid' => 'Ödendi', 'new' => 'Yeni']),
+```
+
 **Rows per page.** `pageSizeOptions()` sets the choices of the select and
 `defaultPageSize()` the size at the start (default 25, or the first option);
 `pageSize` stays in the URL only while it differs from the default.

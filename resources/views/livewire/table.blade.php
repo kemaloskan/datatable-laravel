@@ -25,11 +25,25 @@
     if ($rowActions !== []) { $levels[] = 2; }
     $span = count($columns) + ($selectable ? 1 : 0) + ($rowActions === [] ? 0 : 1) + ($collapsible ? 1 : 0);
     $layout = $this->dataTableLayout();
+    $appliedFilters = $this->dataTableQuery()->filters;
+    $filterChips = collect($allColumns)->filter(fn ($column) => $column->hasFilter())
+        ->map(fn ($column) => [$column, \Acunsoft\DataTable\Laravel\Support\FilterPanel::describe($column, \Acunsoft\DataTable\Laravel\Support\FilterPanel::read($column, $appliedFilters))])
+        ->filter(fn ($chip) => $chip[1] !== null)->values();
     $importable = in_array(\Acunsoft\DataTable\Laravel\Livewire\WithTableImport::class, class_uses_recursive($this), true);
     $importId = 'adt-import-'.$this->getId();
 @endphp
 <div class="adt{{ $size === 'md' ? '' : ' adt-size--'.$size }}">
     @include('acun-datatable::livewire.bar', ['position' => 'top'])
+
+    @if ($filterChips->isNotEmpty())
+        <div class="adt-filter-chips" role="group" aria-label="{{ $this->tableText('filters') }}">
+            @foreach ($filterChips as [$column, $chip])
+                <span class="adt-chip">{{ $chip }}<button type="button" class="adt-chip-remove" aria-label="{{ $this->tableText('remove_filter', ['column' => $column->headerText()]) }}"
+                    wire:click="filterBy({{ \Illuminate\Support\Js::from($column->id()) }})"><svg class="adt-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M18 6 6 18M6 6l12 12"/></svg></button></span>
+            @endforeach
+            <button type="button" class="adt-chip-clear" wire:click="clearPanelFilters">{{ $this->tableText('clear_filters') }}</button>
+        </div>
+    @endif
 
     @if ($importable)
         @include('acun-datatable::livewire.import')

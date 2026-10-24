@@ -256,7 +256,7 @@ final class QueryApplier
     {
         $name = $column->databaseColumn();
         $textual = in_array($column->valueType(), [null, 'text'], true);
-        if (in_array($operator, ['gt', 'lt', 'between'], true) && $column->valueType() === 'boolean') {
+        if (in_array($operator, ['gt', 'lt', 'gte', 'lte', 'between'], true) && $column->valueType() === 'boolean') {
             throw InvalidTableQuery::at($at, "{$operator} is not supported for boolean columns.");
         }
 
@@ -266,6 +266,8 @@ final class QueryApplier
             'eq' => self::compare($builder, $column, '=', $value, $at),
             'gt' => self::compare($builder, $column, '>', $value, $at),
             'lt' => self::compare($builder, $column, '<', $value, $at),
+            'gte' => self::compare($builder, $column, '>=', $value, $at),
+            'lte' => self::compare($builder, $column, '<=', $value, $at),
             'between' => $builder->where(function ($group) use ($column, $value, $at): void {
                 self::compare($group, $column, '>=', $value[0], $at);
                 self::compare($group, $column, '<=', $value[1], $at);
@@ -329,8 +331,8 @@ final class QueryApplier
      * Compare with a whole calendar day as a half-open range, never as
      * `DATE(column)`: the column stays bare, so its index is used (22× faster
      * on 5M rows), and no database session timezone is involved.
-     * `=` is [day, next day), `>` is ≥ next day, `<` is < day; `>=` / `<=` are
-     * the bounds of `between`.
+     * `=` is [day, next day), `>` is ≥ next day, `<` is < day, `>=` is ≥ day,
+     * `<=` is < next day (also the bounds of `between`).
      */
     private static function dayRange(EloquentBuilder|QueryBuilder $builder, string $name, string $operator, string $day, string $format): void
     {

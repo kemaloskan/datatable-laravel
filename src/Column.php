@@ -30,6 +30,9 @@ final class Column
     private bool $hidden = false;
     private ?int $priority = null;
     private ?string $view = null;
+    private bool $filter = false;
+    /** @var array<string|int, string>|null */
+    private ?array $options = null;
 
     private function __construct(private readonly string $id)
     {
@@ -142,6 +145,38 @@ final class Column
     }
 
     public function cellView(): ?string { return $this->view; }
+
+    /**
+     * Show the column in the Livewire filter panel; makes it filterable. The
+     * control follows the type: text → contains, number/decimal → min–max,
+     * date/datetime → from–to, boolean → yes/no.
+     */
+    public function filter(bool $filter = true): self
+    {
+        $copy = $this->with('filter', $filter);
+
+        return $filter ? $copy->with('filterable', true) : $copy;
+    }
+
+    /**
+     * Fixed choices for the filter panel (ticked values become an `in` rule),
+     * as `value => label`: `['paid' => 'Ödendi', 'new' => 'Yeni']`.
+     *
+     * @param array<string|int, string> $options
+     */
+    public function options(array $options): self
+    {
+        if ($options === [] || array_filter($options, fn ($label) => ! is_string($label)) !== []) {
+            throw new InvalidArgumentException("Column [{$this->id}] options must be a non-empty value => label list.");
+        }
+
+        return $this->with('options', $options)->filter();
+    }
+
+    public function hasFilter(): bool { return $this->filter; }
+
+    /** @return array<string|int, string>|null */
+    public function filterOptions(): ?array { return $this->options; }
 
     /** Numbers and decimals: right-aligned in the views (`adt-num`). */
     public function isNumeric(): bool { return in_array($this->type, ['number', 'decimal'], true); }

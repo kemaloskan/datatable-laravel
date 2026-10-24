@@ -28,9 +28,77 @@
         @endif
         @break
 
+    @case('filters')
+        @php
+            $panel = collect($allColumns)->filter(fn ($column) => $column->hasFilter())->values();
+            $activeFilters = $panel->filter(fn ($column) => \Acunsoft\DataTable\Laravel\Support\FilterPanel::rules($column, \Acunsoft\DataTable\Laravel\Support\FilterPanel::read($column, $appliedFilters)) !== [])->count();
+        @endphp
+        @if ($panel->isNotEmpty())
+            {{-- wire:ignore.self keeps the menu open while Livewire updates its content. --}}
+            <details class="adt-columns adt-menu adt-filters" wire:ignore.self x-data @click.outside="$el.open = false" @keydown.escape="$el.open = false; $el.querySelector('summary').focus()"
+                x-on:adt-filters-synced.window="$el.querySelectorAll('input').forEach(input => { if (input === document.activeElement) return; if (input.type === 'checkbox' || input.type === 'radio') input.checked = input.hasAttribute('checked'); else input.value = input.getAttribute('value') ?? ''; })">
+                <summary>
+                    <svg class="adt-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 5h18l-7 8.5V19l-4 2v-7.5z"/></svg>
+                    {{ $this->tableText('filters') }}
+                    <span class="adt-badge" aria-hidden="true" @if ($activeFilters === 0) hidden @endif>{{ $activeFilters }}</span>
+                    <span class="adt-sr-only">{{ $activeFilters > 0 ? $this->tableText('active_filters', $activeFilters, ['count' => \Acunsoft\DataTable\Laravel\Support\Format::count($activeFilters)]) : '' }}</span>
+                </summary>
+                <div class="adt-filter-panel" role="group" aria-label="{{ $this->tableText('filters') }}">
+                    @foreach ($panel as $column)
+                        @php
+                            $kind = \Acunsoft\DataTable\Laravel\Support\FilterPanel::kind($column);
+                            $values = \Acunsoft\DataTable\Laravel\Support\FilterPanel::read($column, $appliedFilters);
+                            $field = \Illuminate\Support\Js::from($column->id());
+                            $controlId = 'adt-'.$this->getId().'-filter-'.$loop->index;
+                        @endphp
+                        <fieldset class="adt-filter adt-filter--{{ $kind }}" data-field="{{ $column->id() }}" x-data wire:key="adt-filter-{{ $column->id() }}">
+                            <legend>{{ $column->headerText() }}</legend>
+                            @if ($kind === 'text')
+                                <input type="search" class="adt-control" autocomplete="off" aria-label="{{ $column->headerText() }}" value="{{ $values['text'] }}"
+                                    x-on:input.debounce.400ms="$wire.filterBy({{ $field }}, { text: $el.value })">
+                            @elseif ($kind === 'boolean')
+                                @foreach (['' => 'filter_any', 'true' => 'yes', 'false' => 'no'] as $flag => $text)
+                                    <label class="adt-filter-choice">
+                                        <input type="radio" name="{{ $controlId }}" value="{{ $flag }}" @checked($values['flag'] === $flag)
+                                            x-on:change="$wire.filterBy({{ $field }}, { flag: $el.value })">
+                                        <span>{{ $this->tableText($text) }}</span>
+                                    </label>
+                                @endforeach
+                            @elseif ($kind === 'options')
+                                @foreach ($column->filterOptions() as $value => $label)
+                                    <label class="adt-filter-choice">
+                                        <input type="checkbox" value="{{ $value }}" @checked(in_array((string) $value, $values['selected'], true))
+                                            x-on:change="$wire.filterBy({{ $field }}, { selected: [...$root.querySelectorAll('input:checked')].map(input => input.value) })">
+                                        <span>{{ $label }}</span>
+                                    </label>
+                                @endforeach
+                            @else
+                                @php $dates = $kind === 'dates'; @endphp
+                                <div class="adt-filter-range">
+                                    <input type="{{ $dates ? 'date' : 'number' }}" class="adt-control" x-ref="min" value="{{ $values['min'] }}"
+                                        @if (! $dates) inputmode="decimal" step="any" placeholder="{{ $this->tableText('filter_min') }}" @endif
+                                        aria-label="{{ $column->headerText() }}: {{ $this->tableText($dates ? 'filter_from' : 'filter_min') }}"
+                                        x-on:change="$wire.filterBy({{ $field }}, { min: $refs.min.value, max: $refs.max.value })">
+                                    <span aria-hidden="true">–</span>
+                                    <input type="{{ $dates ? 'date' : 'number' }}" class="adt-control" x-ref="max" value="{{ $values['max'] }}"
+                                        @if (! $dates) inputmode="decimal" step="any" placeholder="{{ $this->tableText('filter_max') }}" @endif
+                                        aria-label="{{ $column->headerText() }}: {{ $this->tableText($dates ? 'filter_to' : 'filter_max') }}"
+                                        x-on:change="$wire.filterBy({{ $field }}, { min: $refs.min.value, max: $refs.max.value })">
+                                </div>
+                            @endif
+                        </fieldset>
+                    @endforeach
+                    <div class="adt-filter-foot">
+                        <button type="button" class="adt-button adt-filter-clear" wire:click="clearPanelFilters" @disabled($activeFilters === 0)>{{ $this->tableText('clear_filters') }}</button>
+                    </div>
+                </div>
+            </details>
+        @endif
+        @break
+
     @case('columns')
         @if (count($allColumns) > 1 && collect($allColumns)->contains(fn ($column) => $column->isHideable()))
-            <details class="adt-columns" x-data @click.outside="$el.open = false" @keydown.escape="$el.open = false; $el.querySelector('summary').focus()">
+            <details class="adt-columns" wire:ignore.self x-data @click.outside="$el.open = false" @keydown.escape="$el.open = false; $el.querySelector('summary').focus()">
                 <summary>
                     <svg class="adt-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M9 4v16M15 4v16M4 4h16v16H4z"/></svg>
                     {{ $this->tableText('columns') }}
@@ -55,7 +123,7 @@
     @case('tools')
         @php $exportFormats = array_values(array_intersect($this->exportFormats(), ['xlsx', 'csv'])); @endphp
         @if ($exportFormats !== [] || $this->printable() || $importable)
-            <details class="adt-columns adt-menu" x-data @click.outside="$el.open = false" @keydown.escape="$el.open = false; $el.querySelector('summary').focus()">
+            <details class="adt-columns adt-menu" wire:ignore.self x-data @click.outside="$el.open = false" @keydown.escape="$el.open = false; $el.querySelector('summary').focus()">
                 <summary>
                     <svg class="adt-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>
                     {{ $this->tableText('tools') }}
