@@ -1,4 +1,6 @@
-# Keep `composer require` downloads small: tests are not shipped.
+# Not part of the Composer package: tests and the browser-test app.
 /tests export-ignore
+/workbench export-ignore
+/testbench.yaml export-ignore
 /phpunit.xml.dist export-ignore
 /.gitattributes export-ignore

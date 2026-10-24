@@ -163,4 +163,15 @@ final class QueryApplierTest extends TestCase
         self::assertSame(5, $page->total());
         self::assertSame(['Can Öztürk', 'Ayşe Yılmaz'], array_map(fn ($order) => $order->customer, $page->items()));
     }
+
+    public function test_the_users_sort_comes_before_an_order_written_in_the_query(): void
+    {
+        $builder = Order::query()->orderBy('id');
+        $columns = [\Acunsoft\DataTable\Laravel\Column::make('customer')->sortable()];
+        $sorted = QueryApplier::apply($builder, TableQuery::fromArray(['sort' => 'customer:asc']), $columns);
+        self::assertSame(['customer', 'id'], array_column($sorted->getQuery()->orders, 'column'));
+        $plain = QueryApplier::apply(Order::query()->orderByDesc('total'), TableQuery::fromArray([]), $columns);
+        self::assertSame(['total', 'orders.id'], array_column($plain->getQuery()->orders, 'column')); // no sort: the written order stays first
+    }
 }
+

@@ -81,6 +81,12 @@ final class QueryApplier
             }
         }
 
+        // The user's sort comes first; an order written in query() only breaks ties.
+        $base = $builder instanceof EloquentBuilder ? $builder->getQuery() : $builder;
+        $written = $query->sorting === [] ? [] : ($base->orders ?? []);
+        if ($written !== []) {
+            $base->orders = null;
+        }
         $sortedColumns = [];
         foreach ($query->sorting as $rule) {
             $column = $byId[$rule['field']] ?? throw InvalidTableQuery::at('sort', "Unknown column [{$rule['field']}].");
@@ -89,6 +95,12 @@ final class QueryApplier
             }
             $builder->orderBy($column->databaseColumn(), $rule['direction']);
             $sortedColumns[] = $column->databaseColumn();
+        }
+        foreach ($written as $order) {
+            $base->orders[] = $order;
+            if (isset($order['column']) && is_string($order['column'])) {
+                $sortedColumns[] = $order['column'];
+            }
         }
         if ($builder instanceof EloquentBuilder) {
             $model = $builder->getModel();

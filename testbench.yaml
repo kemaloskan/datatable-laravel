@@ -1,0 +1,18 @@
+# `vendor/bin/testbench serve`: a small Laravel app with the test fixtures,
+# for the Livewire browser tests (e2e/livewire.spec.ts at the repository root).
+providers:
+  - Livewire\LivewireServiceProvider
+  - Acunsoft\DataTable\Laravel\DataTableServiceProvider
+  - Workbench\App\Providers\WorkbenchServiceProvider
+
+env:
+  - APP_KEY="base64:YWNkYXRhdGFibGUtd29ya2JlbmNoLW9ubHkta2V5ISE="
+  - APP_DEBUG=true
+  - APP_TIMEZONE=Europe/Istanbul
+  - SESSION_DRIVER=file
+  - CACHE_STORE=array
+
+workbench:
+  start: '/'
+  discovers:
+    web: false

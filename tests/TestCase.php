@@ -18,6 +18,7 @@ abstract class TestCase extends Orchestra
         $app['config']->set('app.timezone', 'Europe/Istanbul');
         $app['config']->set('database.default', 'testing');
         $app['config']->set('database.connections.testing', ['driver' => 'sqlite', 'database' => ':memory:', 'prefix' => '']);
+        $app['config']->set('cache.default', 'array'); // independent of testbench.yaml (the browser-test app)
     }
 
     protected function setUp(): void

@@ -45,7 +45,8 @@
     },
     "autoload-dev": {
         "psr-4": {
-            "Acunsoft\\DataTable\\Laravel\\Tests\\": "tests/"
+            "Acunsoft\\DataTable\\Laravel\\Tests\\": "tests/",
+            "Workbench\\App\\": "workbench/app/"
         }
     },
     "extra": {
