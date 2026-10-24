@@ -692,6 +692,10 @@ $query = TableQuery::fromRequest($request, maxPageSize: 100);   // or fromArray(
 $page  = QueryApplier::paginate(Order::query(), $query, $columns); // LengthAwarePaginator
 ```
 
+## Upgrading
+
+From 0.4: see [UPGRADING.md](https://github.com/kemaloskan/acun-datatable/blob/main/UPGRADING.md#acunsoftdatatable-laravel-04--05) (re-publish customized views, the user's sort now comes first).
+
 ## Tests
 
 ```bash
