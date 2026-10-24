@@ -32,6 +32,8 @@ final class Column
     private ?string $view = null;
     private bool $filter = false;
     private ?string $aggregate = null;
+    /** @var list<mixed>|null validation rules of an editable column; null: not editable */
+    private ?array $editRules = null;
     /** @var array<string|int, string>|null */
     private ?array $options = null;
 
@@ -186,6 +188,38 @@ final class Column
         }
 
         return $this->with('aggregate', $aggregate);
+    }
+
+    /**
+     * Edit the cell in place in the Livewire table. The value is checked
+     * against the column type (number, decimal, date, datetime, boolean,
+     * `options()`) and these extra rules, e.g. `['required', 'max:120']`;
+     * an empty field is `null` unless `required`. The component saves it
+     * (`saveCell()`), after the model's policy allows `update` when there is one.
+     *
+     * @param  list<mixed>|string  $rules
+     */
+    public function editable(array|string $rules = []): self
+    {
+        return $this->with('editRules', is_string($rules) ? explode('|', $rules) : array_values($rules));
+    }
+
+    public function isEditable(): bool { return $this->editRules !== null; }
+
+    /** @return list<mixed> every rule for an edited value: nullable or required, the type, `options()` and `editable()`'s */
+    public function editRules(): array
+    {
+        $extra = $this->editRules ?? [];
+        $type = match ($this->type) {
+            'number', 'decimal' => ['numeric'],
+            'date' => ['date_format:Y-m-d'],
+            'datetime' => ['date'],
+            'boolean' => ['boolean'],
+            default => $this->options === null ? ['string'] : [],
+        };
+        $choices = $this->options === null ? [] : [\Illuminate\Validation\Rule::in(array_map('strval', array_keys($this->options)))];
+
+        return [in_array('required', $extra, true) ? 'required' : 'nullable', ...$type, ...$choices, ...array_values(array_filter($extra, fn ($rule) => $rule !== 'required'))];
     }
 
     /** Shortcut for `aggregate('sum')`. */

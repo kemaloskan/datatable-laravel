@@ -53,6 +53,8 @@ return [
     'move_column_up' => 'Spalte :name nach oben verschieben',
     'move_column_down' => 'Spalte :name nach unten verschieben',
     'reset_columns' => 'Spalten zurücksetzen',
+    'edit_cell' => ':column bearbeiten: :name',
+    'saving' => 'Wird gespeichert…',
     'export' => 'Exportieren',
     'export_xlsx' => 'Excel (.xlsx)',
     'export_csv' => 'CSV',

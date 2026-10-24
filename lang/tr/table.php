@@ -53,6 +53,8 @@ return [
     'move_column_up' => ':name kolonunu yukarı taşı',
     'move_column_down' => ':name kolonunu aşağı taşı',
     'reset_columns' => 'Kolonları sıfırla',
+    'edit_cell' => ':column düzenle: :name',
+    'saving' => 'Kaydediliyor…',
     'export' => 'Dışa aktar',
     'export_xlsx' => 'Excel (.xlsx)',
     'export_csv' => 'CSV',

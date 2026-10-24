@@ -265,6 +265,23 @@ The tools menu holds everything that is not about the rows on screen: **export**
 controls) and **import** (`WithTableImport`). It only appears when at least one
 of them is on.
 
+### Editing in place
+
+```php
+Column::make('city')->header('Şehir')->editable(['required', 'max:60']),
+Column::make('total')->header('Tutar')->type('decimal')->editable('min:0'),
+Column::make('status')->header('Durum')->options(['new' => 'Yeni', 'paid' => 'Ödendi'])->editable(),
+```
+
+The cell gets an edit button (and a double click) with an editor for its type;
+Enter or leaving the field calls `updateCell()`. On the server the row is
+looked up inside `query()`, the model's policy must allow `update` (when it
+has one), and the value is validated against the type, `options()` and your
+rules (`nullable` unless `required`; a decimal comma is accepted); an error
+keeps the editor open with the message. `saveCell()` then sets only that
+column's attribute and saves the model; override it for query-builder rows or
+extra logic, and `authorizeEdit()` for other checks.
+
 ### Resizing and moving columns
 
 ```php

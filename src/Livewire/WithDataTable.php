@@ -707,6 +707,94 @@ trait WithDataTable
         ]);
     }
 
+    // Editing in place ------------------------------------------------------
+
+    /**
+     * Save a cell edited in place (columns with `editable()`). The row is
+     * looked up inside `query()`; the model's policy must allow `update` when
+     * there is one (`authorizeEdit()`); the value is validated against the
+     * column (`Column::editRules()`), and a failure shows next to the field.
+     * Returns whether it was saved.
+     */
+    public function updateCell(string|int $key, string $field, mixed $value): bool
+    {
+        $key = (string) $key;
+        $column = $this->dataTableColumn($field);
+        if ($column === null || ! $column->isEditable() || strlen($key) > 64) {
+            return false;
+        }
+        $error = 'cells.'.md5($key.'|'.$field);
+        $this->resetErrorBag($error);
+        $row = $this->whereKeys($this->query(), [$key])->first();
+        if ($row === null) {
+            return false;
+        }
+        $this->authorizeEdit($row, $column);
+        if ($column->isNumeric() && is_string($value) && preg_match('/^[+-]?\d+,\d+$/', trim($value)) === 1) {
+            $value = str_replace(',', '.', trim($value)); // a decimal comma, as typed in Turkish or German
+        }
+        $validator = \Illuminate\Support\Facades\Validator::make(
+            ['value' => $value === '' ? null : $value],
+            ['value' => $column->editRules()],
+            [],
+            ['value' => $column->headerText()],
+        );
+        if ($validator->fails()) {
+            $this->addError($error, $validator->errors()->first('value'));
+
+            return false;
+        }
+        $this->saveCell($row, $column, $validator->validated()['value']);
+        unset($this->rows); // show the new value
+
+        return true;
+    }
+
+    /** Forget the error of a cell whose edit was cancelled. */
+    public function cancelEdit(string|int $key, string $field): void
+    {
+        $this->resetErrorBag('cells.'.md5((string) $key.'|'.$field));
+    }
+
+    /**
+     * Write an edited value. Default: an Eloquent model's attribute is set
+     * and saved (only this column's attribute, never a field named by the
+     * browser). Override for query builders or extra logic.
+     */
+    protected function saveCell(mixed $row, Column $column, mixed $value): void
+    {
+        if (! $row instanceof \Illuminate\Database\Eloquent\Model) {
+            throw new \LogicException('Override saveCell() to save edits of query-builder rows.');
+        }
+        $row->setAttribute($column->attributeName(), $value);
+        $row->save();
+    }
+
+    /** Throws when the user may not edit this row: the model's policy `update` ability, when one exists. */
+    protected function authorizeEdit(mixed $row, Column $column): void
+    {
+        if (is_object($row) && \Illuminate\Support\Facades\Gate::getPolicyFor($row) !== null) {
+            \Illuminate\Support\Facades\Gate::authorize('update', $row);
+        }
+    }
+
+    /** The text an editor starts with: decimals as written, dates as `Y-m-d`, date-times as `Y-m-d\TH:i`. */
+    protected function editValue(Column $column, mixed $row): string
+    {
+        $value = data_get($row, $column->attributeName());
+        if ($value === null) {
+            return '';
+        }
+        if ($value instanceof \DateTimeInterface) {
+            return $value->format($column->valueType() === 'datetime' ? 'Y-m-d\TH:i' : 'Y-m-d');
+        }
+        if (is_bool($value)) {
+            return $value ? '1' : '0';
+        }
+
+        return (string) $value;
+    }
+
     // Child rows -----------------------------------------------------------
 
     /** Open or close a row's child row (`detailView()`); `null` toggles. Only rows of the current page open. */

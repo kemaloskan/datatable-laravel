@@ -189,8 +189,8 @@
                                 </td>
                             @endif
                             @foreach ($columns as $index => $column)
-                                @php $cellClass = trim(($collapsible ? 'adt-col--p'.$column->priorityAt($index) : '').($column->isNumeric() ? ' adt-num' : '')); @endphp
-                                <td data-label="{{ $column->headerText() }}" @if ($cellClass !== '') class="{{ $cellClass }}" @endif>@include('acun-datatable::livewire.cell')</td>
+                                @php $cellClass = trim(($collapsible ? 'adt-col--p'.$column->priorityAt($index) : '').($column->isNumeric() ? ' adt-num' : '').($column->isEditable() ? ' adt-editable' : '')); @endphp
+                                <td data-label="{{ $column->headerText() }}" @if ($cellClass !== '') class="{{ $cellClass }}" @endif>@if ($column->isEditable())@include('acun-datatable::livewire.edit-cell')@else @include('acun-datatable::livewire.cell')@endif</td>
                             @endforeach
                             @if ($rowActions !== [])
                                 <td class="adt-actions{{ $collapsible ? ' adt-col--p2' : '' }}" data-label="{{ $this->tableText('actions') }}">

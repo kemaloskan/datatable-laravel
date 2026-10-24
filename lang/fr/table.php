@@ -53,6 +53,8 @@ return [
     'move_column_up' => 'Monter la colonne :name',
     'move_column_down' => 'Descendre la colonne :name',
     'reset_columns' => 'Réinitialiser les colonnes',
+    'edit_cell' => 'Modifier :column : :name',
+    'saving' => 'Enregistrement…',
     'export' => 'Exporter',
     'export_xlsx' => 'Excel (.xlsx)',
     'export_csv' => 'CSV',
