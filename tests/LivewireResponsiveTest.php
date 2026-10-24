@@ -139,5 +139,17 @@ final class LivewireResponsiveTest extends TestCase
         self::assertSame(10, substr_count($html, 'class="adt-row adt-skeleton-row"')); // a page of 25, capped at ten
         self::assertStringNotContainsString('Ayşe', $html); // no query ran
     }
+
+    public function test_fixed_columns_measure_in_the_browser(): void
+    {
+        $html = Livewire::test(ResponsiveOrdersTable::class)->html();
+        self::assertStringNotContainsString('adt-pin', $html);
+        $html = Livewire::test(ResponsiveOrdersTable::class, ['fixed' => ['start' => 1, 'end' => 1]])->html();
+        preg_match('/<div class="adt-table-wrap[^"]*"\s+x-data x-init="([^"]+)"/', $html, $init);
+        self::assertNotEmpty($init, 'the wrapper has the Alpine pin script');
+        self::assertStringContainsString('start = 1, end = 1;', $init[1]);
+        $html = Livewire::test(ResponsiveOrdersTable::class, ['fixed' => ['start' => 99, 'end' => 'x']])->html();
+        self::assertStringContainsString('start = 10, end = 0;', $html); // clamped, non-numbers ignored
+    }
 }
 

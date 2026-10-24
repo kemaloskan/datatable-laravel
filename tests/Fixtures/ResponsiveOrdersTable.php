@@ -22,6 +22,9 @@ final class ResponsiveOrdersTable extends \Livewire\Component
 
     public ?string $detail = null;
 
+    /** @var array{start?: int, end?: int} */
+    public array $fixed = [];
+
     protected function columns(): array
     {
         return [
@@ -55,6 +58,11 @@ final class ResponsiveOrdersTable extends \Livewire\Component
     protected function scrollY(): ?string
     {
         return $this->height;
+    }
+
+    protected function fixedColumns(): array
+    {
+        return $this->fixed;
     }
 
     protected function detailView(): ?string

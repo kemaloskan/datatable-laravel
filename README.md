@@ -265,6 +265,20 @@ The tools menu holds everything that is not about the rows on screen: **export**
 controls) and **import** (`WithTableImport`). It only appears when at least one
 of them is on.
 
+### Fixed columns
+
+```php
+protected function fixedColumns(): array
+{
+    return ['start' => 1, 'end' => 1]; // first data column (with the checkbox) and the actions
+}
+```
+
+The cells stay in place while the table scrolls sideways (`responsive()`
+`scroll`, or a wide table). Offsets are measured in the browser with Alpine
+and follow every update; on a phone pinned cells never take more than 60% of
+the width.
+
 ### Lazy loading
 
 ```php

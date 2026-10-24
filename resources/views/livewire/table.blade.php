@@ -27,6 +27,9 @@
     $levels = collect($columns)->map(fn ($column, $index) => $column->priorityAt($index))->values()->all();
     if ($rowActions !== []) { $levels[] = 2; }
     $span = count($columns) + ($selectable ? 1 : 0) + ($rowActions === [] ? 0 : 1) + ($expandable ? 1 : 0);
+    $fixed = $this->fixedColumns();
+    $fixedStart = is_int($fixed['start'] ?? null) ? max(0, min(10, $fixed['start'])) : 0;
+    $fixedEnd = is_int($fixed['end'] ?? null) ? max(0, min(10, $fixed['end'])) : 0;
     $layout = $this->dataTableLayout();
     $appliedFilters = $this->dataTableQuery()->filters;
     $filterChips = collect($allColumns)->filter(fn ($column) => $column->hasFilter())
@@ -73,6 +76,7 @@
 
     <div @class(['adt-table-wrap', 'adt-responsive--'.$responsive, 'adt-sticky-header' => $this->stickyHeader(), 'adt-scroll-y' => $scrollY !== null])
         @if ($scrollY !== null) style="--adt-scroll-y: {{ $scrollY }}" @endif
+        @if ($fixedStart > 0 || $fixedEnd > 0) x-data x-init="@include('acun-datatable::livewire.pin', ['start' => $fixedStart, 'end' => $fixedEnd])" @endif
         wire:loading.class="adt-loading" wire:loading.attr="aria-busy">
         <div class="adt-notice" role="status" wire:loading>{{ $this->tableText('loading') }}</div>
         <div class="adt-scroll">

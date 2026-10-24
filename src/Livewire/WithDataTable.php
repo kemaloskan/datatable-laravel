@@ -207,6 +207,20 @@ trait WithDataTable
     }
 
     /**
+     * Columns that stay in place while the table scrolls sideways (DataTables
+     * `fixedColumns`): `['start' => 1, 'end' => 1]` keeps the first data
+     * column (with the checkbox and ⊕ before it) and the last cell (the
+     * actions, when there are any). Offsets are measured in the browser
+     * (Alpine); the phone card layout does not pin.
+     *
+     * @return array{start?: int, end?: int}
+     */
+    protected function fixedColumns(): array
+    {
+        return [];
+    }
+
+    /**
      * A fixed table height to scroll inside, the header staying in place
      * (DataTables `scrollY`): a CSS length such as `60vh` or `480px`; `null` off.
      */
