@@ -221,7 +221,7 @@
                                 @if ($index === 0 && $kind === null)
                                     <th scope="row" data-label="{{ $column->headerText() }}" @if ($totalClass !== '') class="{{ $totalClass }}" @endif>{{ $this->tableText('totals') }}</th>
                                 @else
-                                    <td data-label="{{ $column->headerText() }}{{ $has ? ' · '.$this->tableText('aggregate_'.$kind) : '' }}" @if ($totalClass !== '') class="{{ $totalClass }}" @endif @if ($has) title="{{ $this->tableText('aggregate_'.$kind) }}" @endif>{{ $value === null ? '' : ($kind === 'count' ? \Acunsoft\DataTable\Laravel\Support\Format::count((int) $value) : \Acunsoft\DataTable\Laravel\Support\Format::value($value, $column->valueType())) }}</td>
+                                    <td data-label="{{ $column->headerText() }}{{ $has ? ' · '.$this->tableText('aggregate_'.$kind) : '' }}" @if ($totalClass !== '') class="{{ $totalClass }}" @endif @if ($has) title="{{ $this->tableText('aggregate_'.$kind) }}" @endif>{{ $has ? \Acunsoft\DataTable\Laravel\Support\Format::total($column, $value, $kind) : '' }}</td>
                                 @endif
                             @endforeach
                             @if ($rowActions !== [])<td class="adt-actions{{ $collapsible ? ' adt-col--p2' : '' }}"></td>@endif

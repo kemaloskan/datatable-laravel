@@ -32,6 +32,34 @@ final class Format
         return self::value($value, $column->valueType());
     }
 
+    /**
+     * The text of a footer total: counts as plain numbers; the rest through
+     * the column's formatter (called with a `null` row, so `1.250,50 ₺`
+     * matches the cells), else in the column's type. A formatter that needs
+     * the row falls back to the default text.
+     */
+    public static function total(Column $column, mixed $value, string $kind): string
+    {
+        if ($value === null) {
+            return '';
+        }
+        if ($kind === 'count') {
+            return self::count((int) $value);
+        }
+        if ($column->formatter() !== null) {
+            try {
+                $text = ($column->formatter())($value, null);
+                if (is_string($text)) {
+                    return $text;
+                }
+            } catch (\Throwable) {
+                // needs the row: the default text below
+            }
+        }
+
+        return self::value($value, $column->valueType());
+    }
+
     /** A count in the locale's digit grouping: 1,600 (en), 1.600 (tr, de), 1 600 (fr). */
     public static function count(int $count, ?string $locale = null): string
     {

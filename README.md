@@ -299,7 +299,9 @@ A `<tfoot>` row shows the total over every row matching the search and
 filters, computed in one SQL query (`SUM`, `AVG`, …) next to the count. It is
 left out while the count is only "10,000+", since a total of an unknown
 number of rows would cost what the count saved. The JSON endpoint sends the
-same values as `totals`, which the browser packages show.
+same values as `totals`, which the browser packages show. A column's
+`format()` also formats its total, with `$row` `null`; a formatter that needs
+the row falls back to the default text.
 
 ### Export and import
 

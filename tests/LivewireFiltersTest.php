@@ -97,6 +97,16 @@ final class LivewireFiltersTest extends TestCase
         self::assertSame(['total' => 229.9], array_map('floatval', $table->instance()->totals()));
     }
 
+    public function test_footer_totals_use_the_column_formatter(): void
+    {
+        $column = Column::make('total')->type('decimal')->sum()->format(fn ($value) => number_format((float) $value, 2, ',', '.').' ₺');
+        self::assertSame('5.350,40 ₺', \Acunsoft\DataTable\Laravel\Support\Format::total($column, '5350.40', 'sum'));
+        self::assertSame('3', \Acunsoft\DataTable\Laravel\Support\Format::total($column, 3, 'count'));
+        $needsRow = Column::make('total')->type('decimal')->sum()->format(fn ($value, $row) => $row->currency.' '.$value);
+        self::assertSame('5,350.40', \Acunsoft\DataTable\Laravel\Support\Format::total($needsRow, '5350.40', 'sum')); // falls back
+        self::assertSame('', \Acunsoft\DataTable\Laravel\Support\Format::total($column, null, 'sum'));
+    }
+
     public function test_the_json_endpoint_sends_totals(): void
     {
         \Illuminate\Support\Facades\Route::get('/totals', fn () => \Acunsoft\DataTable\Laravel\TableResponse::for(Order::query())->columns([
