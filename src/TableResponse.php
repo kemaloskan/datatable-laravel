@@ -136,6 +136,7 @@ final class TableResponse implements Responsable
     /** @param Request $request */
     public function toResponse($request): JsonResponse
     {
+        $unfiltered = clone $this->builder;
         try {
             $query = TableQuery::fromRequest($request, $this->maxPageSize, $this->defaultPageSize);
             if ($this->searchEngine !== null && $query->search !== '') {
@@ -146,10 +147,26 @@ final class TableResponse implements Responsable
             // Footer totals (columns with aggregate()) only while the count is exact.
             $totals = $page->totalIsExact() ? QueryApplier::aggregates($fresh, $query, $this->columns) : [];
         } catch (InvalidTableQuery $error) {
+            if ($request->has('draw')) {
+                // DataTables shows `error` to the user and expects a 200 answer.
+                return new JsonResponse(['draw' => (int) $request->input('draw'), 'error' => implode(' ', $error->errors) ?: $error->getMessage(), 'data' => [], 'recordsTotal' => 0, 'recordsFiltered' => 0]);
+            }
+
             return new JsonResponse(['message' => $error->getMessage(), 'errors' => $error->errors], 422);
         }
 
         $rows = array_map(fn ($row) => $this->row($row), $page->items());
+        if ($query->draw !== null) {
+            // DataTables' answer: the unfiltered count too, within the same time limit.
+            [$all] = QueryApplier::count($unfiltered, $this->countLimit, $this->countTimeout);
+
+            return new JsonResponse([
+                'draw' => $query->draw,
+                'recordsTotal' => max($all, $page->total()),
+                'recordsFiltered' => $page->total(),
+                'data' => $rows,
+            ]);
+        }
 
         return new JsonResponse(($page->totalIsExact()
             ? ['rows' => $rows, 'totalRows' => $page->total()]

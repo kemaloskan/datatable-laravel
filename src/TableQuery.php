@@ -41,7 +41,63 @@ final class TableQuery
         /** Keys a search engine found for `$search` (see withSearchKeys()); null: search the columns. */
         public readonly ?array $searchKeys = null,
         public readonly string $searchKeyColumn = 'id',
+        /** DataTables' request counter when the request used its protocol (see fromDataTables()). */
+        public readonly ?int $draw = null,
     ) {
+    }
+
+    /**
+     * Read DataTables' server-side protocol (`draw`, `start`, `length`,
+     * `order[i][column|dir]`, `columns[i][data|search][value]`,
+     * `search[value]`), so an existing DataTables front end can use this
+     * endpoint as it is. A column's `search[value]` becomes a `contains`
+     * filter; `length=-1` asks for the largest page allowed. `filters[i]` in
+     * this package's format are read too.
+     *
+     * @param array<string, mixed> $input
+     *
+     * @throws InvalidTableQuery
+     */
+    public static function fromDataTables(array $input, int $maxPageSize = 100, int $defaultPageSize = 25): self
+    {
+        $columns = [];
+        foreach (is_array($input['columns'] ?? null) ? array_values($input['columns']) : [] as $index => $column) {
+            $field = is_array($column) ? ($column['data'] ?? $column['name'] ?? null) : null;
+            if (! is_string($field) || preg_match('/^[A-Za-z][A-Za-z0-9_.-]{0,63}$/', $field) !== 1) {
+                throw InvalidTableQuery::at("columns.{$index}.data", 'columns[].data must be a column ID.');
+            }
+            $columns[$index] = ['field' => $field, 'search' => is_array($column['search'] ?? null) ? ($column['search']['value'] ?? '') : ''];
+        }
+        $length = $input['length'] ?? $defaultPageSize;
+        $length = self::integer($length === '-1' ? -1 : $length, 'length', -1, 1_000_000); // -1: "all
+        $pageSize = $length < 1 ? $maxPageSize : min($length, $maxPageSize);
+        $start = self::integer($input['start'] ?? 0, 'start', 0, self::MAX_PAGE * $maxPageSize);
+        $sort = [];
+        foreach (is_array($input['order'] ?? null) ? array_values($input['order']) : [] as $index => $rule) {
+            $column = is_array($rule) ? ($rule['column'] ?? null) : null;
+            $column = is_string($column) && ctype_digit($column) ? (int) $column : $column;
+            if (! is_int($column) || ! isset($columns[$column])) {
+                throw InvalidTableQuery::at("order.{$index}.column", 'order[].column must be the index of a column.');
+            }
+            $sort[$columns[$column]['field']] = $columns[$column]['field'].':'.(($rule['dir'] ?? 'asc') === 'desc' ? 'desc' : 'asc');
+        }
+        $filters = is_array($input['filters'] ?? null) ? array_values($input['filters']) : [];
+        foreach ($columns as $column) {
+            if (is_string($column['search']) && trim($column['search']) !== '') {
+                $filters[] = ['field' => $column['field'], 'op' => 'contains', 'value' => $column['search']];
+            }
+        }
+        $search = $input['search'] ?? '';
+        $query = self::fromArray([
+            'page' => intdiv($start, $pageSize) + 1,
+            'pageSize' => $pageSize,
+            'sort' => implode(',', $sort),
+            'filters' => $filters,
+            'search' => is_array($search) ? ($search['value'] ?? '') : $search,
+        ], $maxPageSize, min($defaultPageSize, $maxPageSize));
+
+        return new self($query->page, $query->pageSize, $query->sorting, $query->filters, $query->search,
+            draw: self::integer($input['draw'] ?? 0, 'draw', 0, 999_999_999));
     }
 
     /**
@@ -62,7 +118,7 @@ final class TableQuery
             }
         }
 
-        return new self($this->page, $this->pageSize, $this->sorting, $this->filters, $this->search, $this->cursorPaging, $this->cursor, array_values(array_unique($list)), $column);
+        return new self($this->page, $this->pageSize, $this->sorting, $this->filters, $this->search, $this->cursorPaging, $this->cursor, array_values(array_unique($list)), $column, $this->draw);
     }
 
     public static function fromRequest(Request $request, int $maxPageSize = 100, int $defaultPageSize = 25): self
@@ -72,7 +128,8 @@ final class TableQuery
             ? $request->query()
             : ($request->isJson() ? $request->json()->all() : $request->request->all());
 
-        return self::fromArray($input, $maxPageSize, $defaultPageSize);
+        // DataTables' own protocol (an existing DataTables front end) carries `draw`.
+        return isset($input['draw']) ? self::fromDataTables($input, $maxPageSize, $defaultPageSize) : self::fromArray($input, $maxPageSize, $defaultPageSize);
     }
 
     /**

@@ -104,5 +104,36 @@ final class TableResponseTest extends TestCase
         self::assertSame([], $this->getJson('/orders/engine?search=nothing')->json('rows'));
         self::assertCount(3, $this->getJson('/orders/engine?pageSize=3')->json('rows')); // no search: every row, the engine is not asked
     }
+
+    public function test_an_existing_datatables_front_end_gets_its_own_answer(): void
+    {
+        $params = [
+            'draw' => '3', 'start' => '2', 'length' => '2', 'search' => ['value' => '', 'regex' => 'false'],
+            'columns' => [
+                ['data' => 'customer', 'name' => '', 'searchable' => 'true', 'orderable' => 'true', 'search' => ['value' => '', 'regex' => 'false']],
+                ['data' => 'total', 'name' => '', 'searchable' => 'true', 'orderable' => 'true', 'search' => ['value' => '', 'regex' => 'false']],
+            ],
+            'order' => [['column' => '1', 'dir' => 'desc']],
+        ];
+        $body = $this->getJson('/orders/data?'.http_build_query($params))->assertOk()->json();
+        $expected = Order::query()->orderByDesc('total')->orderByDesc('id')->skip(2)->take(2)->pluck('id')->all();
+        self::assertSame(3, $body['draw']);
+        self::assertSame(Order::query()->count(), $body['recordsTotal']);
+        self::assertSame(Order::query()->count(), $body['recordsFiltered']);
+        self::assertSame($expected, array_column($body['data'], 'id'));
+
+        $params['columns'][0]['search']['value'] = 'Ticaret'; // a column search: contains
+        $params['start'] = '0';
+        $body = $this->getJson('/orders/data?'.http_build_query($params))->json();
+        self::assertSame(Order::query()->where('customer', 'like', '%Ticaret%')->count(), $body['recordsFiltered']);
+        self::assertSame(Order::query()->count(), $body['recordsTotal']);
+
+        $params['order'] = [['column' => '9', 'dir' => 'asc']];
+        $this->getJson('/orders/data?'.http_build_query($params))->assertOk()->assertJsonPath('draw', 3)->assertJsonPath('error', 'order[].column must be the index of a column.');
+        $params['order'] = [];
+        $params['columns'][0]['search']['value'] = '';
+        $params['length'] = '-1'; // "all": the largest page allowed
+        self::assertCount(3, $this->getJson('/orders/data?'.http_build_query($params))->json('data'));
+    }
 }
 

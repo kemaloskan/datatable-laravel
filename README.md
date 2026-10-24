@@ -45,6 +45,15 @@ The query is read from the URL for `GET` and from the form or JSON body for
 `POST` (register the route with `Route::match(['get', 'post'], …)`; POST needs
 the CSRF token, which `AcunDataTable` sends from `<meta name="csrf-token">`).
 
+**An existing DataTables front end works too.** A request in DataTables'
+server-side protocol (it carries `draw`) is read as such — `start`/`length`,
+`order[i][column|dir]` by column index, `columns[i][search][value]` as a
+`contains` filter, `search[value]`, `length=-1` as the largest page allowed —
+and answered with `{ draw, recordsTotal, recordsFiltered, data }`; an
+invalid request gets DataTables' `error` (with a 200, as DataTables expects).
+The same column allowlist and limits apply. So a page still on DataTables
+can move its endpoint to `TableResponse` first and its front end later.
+
 ## Livewire table
 
 ```php
