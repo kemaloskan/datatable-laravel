@@ -215,7 +215,7 @@ returning `false` makes Shift+click sort by one column only.
 dense it is:
 
 ```php
-protected function responsive(): string { return 'collapse'; } // cards (default), scroll, collapse, modal
+protected function responsive(): string { return 'collapse'; } // cards (default), scroll, collapse, modal, auto
 protected function tableSize(): string { return 'sm'; }         // sm, md (default), lg
 
 protected function columns(): array
@@ -446,7 +446,7 @@ as needed.
 | `format(fn ($value, $row) => '…')` | cell text in the Livewire views (plain text, escaped) |
 | `hideable(false)` / `hidden()` | Livewire column menu: never hidden / hidden at first |
 | `view('orders.status-badge')` | Livewire cell rendered by your Blade view (`$row`, `$value`, `$text`, `$column`), e.g. a badge or an avatar; exports keep the text |
-| `priority(1)` | narrow screens with `responsive()` `collapse` / `modal`: 1 always, 2 below 640px, 3 below 960px |
+| `priority(1)` | narrow screens with `responsive()` `collapse` / `modal`: 1 always, 2 below 640px, 3 below 960px; with `auto`, the order columns hide in when they do not fit |
 
 Unknown, undeclared or not-allowed fields and malformed values throw
 `InvalidTableQuery`; `TableResponse` answers HTTP 422 `{ message, errors }`.

@@ -43,8 +43,8 @@ final class LivewireResponsiveTest extends TestCase
         $detail = substr($html, strpos($html, 'id="'.$id[1].'"'));
         $detail = preg_replace('/<!--.*?-->/s', '', substr($detail, 0, strpos($detail, '</tr>'))); // without Livewire's markers
         self::assertStringContainsString('x-show="open"', $detail);
-        self::assertMatchesRegularExpression('/adt-detail-item adt-col--p2">\s*<dt>City<\/dt>\s*<dd>İstanbul<\/dd>/', $detail);
-        self::assertMatchesRegularExpression('/adt-detail-item adt-col--p3">\s*<dt>Note<\/dt>\s*<dd>VIP<\/dd>/', $detail);
+        self::assertMatchesRegularExpression('/adt-detail-item adt-col--p2" data-column-id="city">\s*<dt>City<\/dt>\s*<dd>İstanbul<\/dd>/', $detail);
+        self::assertMatchesRegularExpression('/adt-detail-item adt-col--p3" data-column-id="note">\s*<dt>Note<\/dt>\s*<dd>VIP<\/dd>/', $detail);
         self::assertStringNotContainsString('<dt>Customer</dt>', $detail); // priority 1 stays in the row
         self::assertStringContainsString('aria-label="Remove: Ayşe Yılmaz"', $detail);
     }
@@ -145,7 +145,7 @@ final class LivewireResponsiveTest extends TestCase
         $html = Livewire::test(ResponsiveOrdersTable::class)->html();
         self::assertStringNotContainsString('adt-pin', $html);
         $html = Livewire::test(ResponsiveOrdersTable::class, ['fixed' => ['start' => 1, 'end' => 1]])->html();
-        preg_match('/<div class="adt-table-wrap[^"]*"\s+x-data x-init="([^"]+)"/', $html, $init);
+        preg_match('/<div class="adt-table-wrap[^"]*"\s+x-data\s+x-init="([^"]+)"/', $html, $init);
         self::assertNotEmpty($init, 'the wrapper has the Alpine pin script');
         self::assertStringContainsString('start = 1, end = 1;', $init[1]);
         $html = Livewire::test(ResponsiveOrdersTable::class, ['fixed' => ['start' => 99, 'end' => 'x']])->html();
@@ -200,6 +200,18 @@ final class LivewireResponsiveTest extends TestCase
         $table->call('resetColumns');
         self::assertSame([], $table->get('columnOrder'));
         self::assertStringNotContainsString('Reset columns', $table->html());
+    }
+
+    public function test_auto_measures_in_the_browser_and_opens_hidden_columns_below_the_row(): void
+    {
+        $html = preg_replace('/<!--.*?-->/s', '', Livewire::test(ResponsiveOrdersTable::class, ['mode' => 'auto'])->html());
+        self::assertStringContainsString('adt-table-wrap adt-responsive--auto', $html);
+        self::assertMatchesRegularExpression('/x-data\s+x-init="\s*\(\(\) => \{ const root = \$el;/', $html);
+        self::assertStringContainsString("classList.toggle('adt-auto-hidden'", $html);
+        self::assertStringContainsString('class="adt-expand-cell"', $html);
+        self::assertMatchesRegularExpression('/<div class="adt-detail-item adt-col--p3" data-column-id="note">/', $html);
+        self::assertStringContainsString('data-column-id="__actions"', $html);
+        self::assertStringContainsString('x-show="open"', $html); // the details row, below the row
     }
 }
 

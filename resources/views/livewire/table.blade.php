@@ -17,11 +17,12 @@
     $exactTotal = $rows->totalIsExact();
     $rowActions = $this->dataTableRowActions();
     $bulkActions = $selectable ? $this->dataTableBulkActions() : [];
-    $responsive = in_array($this->responsive(), ['cards', 'scroll', 'collapse', 'modal'], true) ? $this->responsive() : 'cards';
-    $collapsible = in_array($responsive, ['collapse', 'modal'], true);
+    $responsive = in_array($this->responsive(), ['cards', 'scroll', 'collapse', 'modal', 'auto'], true) ? $this->responsive() : 'cards';
+    $collapsible = in_array($responsive, ['collapse', 'modal', 'auto'], true);
+    $hiddenBelow = in_array($responsive, ['collapse', 'auto'], true); // hidden columns open below the row
     $detailView = $this->detailView();
     $expandable = $collapsible || $detailView !== null;
-    $inline = $responsive === 'collapse' || ($detailView !== null && $responsive !== 'modal'); // opens below the row
+    $inline = $hiddenBelow || ($detailView !== null && $responsive !== 'modal'); // opens below the row
     $size = in_array($this->tableSize(), ['sm', 'md', 'lg'], true) ? $this->tableSize() : 'md';
     $scrollY = is_string($this->scrollY()) && preg_match('/^\d+(\.\d+)?(px|rem|em|vh|dvh|svh|%)$/', trim($this->scrollY())) ? trim($this->scrollY()) : null;
     $levels = collect($columns)->map(fn ($column, $index) => $column->priorityAt($index))->values()->all();
@@ -79,7 +80,8 @@
 
     <div @class(['adt-table-wrap', 'adt-responsive--'.$responsive, 'adt-sticky-header' => $this->stickyHeader(), 'adt-scroll-y' => $scrollY !== null])
         @if ($scrollY !== null) style="--adt-scroll-y: {{ $scrollY }}" @endif
-        @if ($fixedStart > 0 || $fixedEnd > 0) x-data x-init="@include('acun-datatable::livewire.pin', ['start' => $fixedStart, 'end' => $fixedEnd])" @endif
+        @if ($fixedStart > 0 || $fixedEnd > 0 || $responsive === 'auto') x-data
+            x-init="@if ($fixedStart > 0 || $fixedEnd > 0)@include('acun-datatable::livewire.pin', ['start' => $fixedStart, 'end' => $fixedEnd]);@endif @if ($responsive === 'auto')@include('acun-datatable::livewire.auto-responsive');@endif" @endif
         wire:loading.class="adt-loading" wire:loading.attr="aria-busy">
         <div class="adt-notice" role="status" wire:loading>{{ $this->tableText('loading') }}</div>
         <div class="adt-scroll">
@@ -201,7 +203,7 @@
                         @if ($inline)
                             <tr class="adt-detail" id="{{ $detailId }}" x-show="open" @if (! $detailOpen) style="display: none" @endif>
                                 <td colspan="{{ $span }}">
-                                    @if ($responsive === 'collapse')
+                                    @if ($hiddenBelow)
                                         @include('acun-datatable::livewire.details', ['all' => false])
                                     @endif
                                     @if ($detailView !== null)
