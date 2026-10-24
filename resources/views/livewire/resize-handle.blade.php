@@ -8,6 +8,9 @@
     aria-label="{{ $this->tableText('resize_column', ['name' => $column->headerText()]) }}"
     data-column-id="{{ $column->id() }}" aria-valuemin="48" aria-valuemax="2000" @if ($width !== null) aria-valuenow="{{ $width }}" @endif
     x-data="{
+        {{-- A focusable separator needs its value: the measured width until one is set. --}}
+        init() { this.measure(); },
+        measure() { this.$el.setAttribute('aria-valuenow', this.clamp(this.$el.closest('th').getBoundingClientRect().width)); },
         widths() {
             const row = this.$el.closest('tr');
             const out = {};
@@ -44,6 +47,7 @@
             document.addEventListener('keydown', escape, true);
         },
     }"
+    x-on:focus="measure()"
     x-on:pointerdown.prevent="start($event)"
     x-on:keydown.arrow-right.prevent="step($event.shiftKey ? 64 : 16)"
     x-on:keydown.arrow-left.prevent="step($event.shiftKey ? -64 : -16)"
