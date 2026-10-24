@@ -126,4 +126,18 @@ final class LivewireResponsiveTest extends TestCase
         self::assertMatchesRegularExpression('/<div class="adt-detail-content"\s+aria-busy="true"/', $dialog); // loads once opened
         self::assertStringNotContainsString('class="adt-detail"', $html); // no inline child row in modal mode
     }
+
+    public function test_a_lazy_table_shows_a_skeleton_until_it_loads(): void
+    {
+        Livewire::component('lazy-orders', ResponsiveOrdersTable::class);
+        $html = \Illuminate\Support\Facades\Blade::render('<livewire:lazy-orders lazy />');
+        self::assertStringContainsString('x-intersect="$wire.__lazyLoad(', $html);
+        self::assertStringContainsString('class="adt-table-wrap adt-skeleton-on" aria-busy="true"', $html);
+        self::assertStringContainsString('<div class="adt-notice" role="status">Loading…</div>', $html);
+        preg_match_all('/<th scope="col" class="([^"]+)">([^<]+)<\/th>/', $html, $headers);
+        self::assertSame(['Customer', 'City', 'Total', 'Note'], $headers[2]);
+        self::assertSame(10, substr_count($html, 'class="adt-row adt-skeleton-row"')); // a page of 25, capped at ten
+        self::assertStringNotContainsString('Ayşe', $html); // no query ran
+    }
 }
+

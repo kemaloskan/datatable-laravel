@@ -545,6 +545,31 @@ trait WithDataTable
         $this->resetPage();
     }
 
+    /**
+     * Shown while a lazy table (`#[Lazy]` on the component, or
+     * `<livewire:orders lazy />`) loads: the header and placeholder rows that
+     * shimmer, so the page does not jump when the rows arrive. Define your own
+     * `placeholder()` to replace it.
+     *
+     * @param  array<string, mixed>  $params
+     */
+    public function placeholder(array $params = []): View
+    {
+        try {
+            $columns = $this->dataTableVisibleColumns();
+        } catch (\Throwable) {
+            $columns = []; // columns() that needs mount(): bars only
+        }
+
+        return view('acun-datatable::livewire.placeholder', [
+            'columns' => $columns,
+            'count' => min(max($this->defaultPageSize(), 1), 10),
+            'selectable' => $this->selectable(),
+            'size' => in_array($this->tableSize(), ['sm', 'md', 'lg'], true) ? $this->tableSize() : 'md',
+            'loading' => $this->tableText('loading'),
+        ]);
+    }
+
     // Child rows -----------------------------------------------------------
 
     /** Open or close a row's child row (`detailView()`); `null` toggles. Only rows of the current page open. */

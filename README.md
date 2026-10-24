@@ -265,6 +265,21 @@ The tools menu holds everything that is not about the rows on screen: **export**
 controls) and **import** (`WithTableImport`). It only appears when at least one
 of them is on.
 
+### Lazy loading
+
+```php
+use Livewire\Attributes\Lazy;
+
+#[Lazy]
+final class OrdersTable extends Component { use WithDataTable; /* … */ }
+```
+
+A lazy table (`#[Lazy]`, or `<livewire:orders-table lazy />`) renders the
+page first and loads itself once it scrolls into view. Meanwhile the trait's
+`placeholder()` shows the header and shimmering placeholder rows, so the page
+does not jump; define your own `placeholder()` to replace it. During later
+updates the current rows stay, dimmed, with `aria-busy`.
+
 ### Child rows
 
 ```php
