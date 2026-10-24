@@ -31,6 +31,7 @@ final class Column
     private ?int $priority = null;
     private ?string $view = null;
     private bool $filter = false;
+    private ?string $aggregate = null;
     /** @var array<string|int, string>|null */
     private ?array $options = null;
 
@@ -172,6 +173,25 @@ final class Column
 
         return $this->with('options', $options)->filter();
     }
+
+    /**
+     * A footer total over every row matching the search and filters: `sum`,
+     * `avg`, `min`, `max` or `count` (non-empty values). Computed with one SQL
+     * aggregate query while the total row count is exact.
+     */
+    public function aggregate(string $aggregate): self
+    {
+        if (! in_array($aggregate, ['sum', 'avg', 'min', 'max', 'count'], true)) {
+            throw new InvalidArgumentException("Column [{$this->id}] aggregate must be sum, avg, min, max or count.");
+        }
+
+        return $this->with('aggregate', $aggregate);
+    }
+
+    /** Shortcut for `aggregate('sum')`. */
+    public function sum(): self { return $this->aggregate('sum'); }
+
+    public function aggregateKind(): ?string { return $this->aggregate; }
 
     public function hasFilter(): bool { return $this->filter; }
 

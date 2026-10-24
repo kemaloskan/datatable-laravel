@@ -189,6 +189,30 @@
                         </tr>
                     </tbody>
                 @endforelse
+                @php $totals = collect($columns)->contains(fn ($column) => $column->aggregateKind() !== null) ? $this->totals : null; @endphp
+                @if ($totals !== null)
+                    {{-- Footer totals over every matching row (shown while the row count is exact). --}}
+                    <tfoot>
+                        <tr class="adt-total">
+                            @if ($collapsible)<td class="adt-expand-cell"></td>@endif
+                            @if ($selectable)<td class="adt-select"></td>@endif
+                            @foreach ($columns as $index => $column)
+                                @php
+                                    $kind = $column->aggregateKind();
+                                    $has = $kind !== null && array_key_exists($column->id(), $totals);
+                                    $value = $has ? $totals[$column->id()] : null;
+                                    $totalClass = trim(($collapsible ? 'adt-col--p'.$column->priorityAt($index) : '').($has ? ' adt-num' : ''));
+                                @endphp
+                                @if ($index === 0 && $kind === null)
+                                    <th scope="row" data-label="{{ $column->headerText() }}" @if ($totalClass !== '') class="{{ $totalClass }}" @endif>{{ $this->tableText('totals') }}</th>
+                                @else
+                                    <td data-label="{{ $column->headerText() }}{{ $has ? ' · '.$this->tableText('aggregate_'.$kind) : '' }}" @if ($totalClass !== '') class="{{ $totalClass }}" @endif @if ($has) title="{{ $this->tableText('aggregate_'.$kind) }}" @endif>{{ $value === null ? '' : ($kind === 'count' ? \Acunsoft\DataTable\Laravel\Support\Format::count((int) $value) : \Acunsoft\DataTable\Laravel\Support\Format::value($value, $column->valueType())) }}</td>
+                                @endif
+                            @endforeach
+                            @if ($rowActions !== [])<td class="adt-actions{{ $collapsible ? ' adt-col--p2' : '' }}"></td>@endif
+                        </tr>
+                    </tfoot>
+                @endif
             </table>
         </div>
     </div>

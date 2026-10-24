@@ -16,7 +16,7 @@ final class FilterOrdersTable extends \Livewire\Component
         return [
             Column::make('customer')->header('Customer')->sortable()->filter()->searchUsing('customer_search'),
             Column::make('city')->header('City')->options(['İstanbul' => 'İstanbul', 'Ankara' => 'Ankara', 'İzmir' => 'İzmir']),
-            Column::make('total')->header('Total')->type('decimal')->sortable()->filter(),
+            Column::make('total')->header('Total')->type('decimal')->sortable()->filter()->sum(),
             Column::make('active')->header('Active')->type('boolean')->filter(),
             Column::make('created')->column('created_at')->header('Created')->type('datetime')->filter(),
             Column::make('note')->header('Note')->filterable(), // filterable, not in the panel

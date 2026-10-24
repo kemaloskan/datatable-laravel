@@ -86,4 +86,28 @@ final class LivewireFiltersTest extends TestCase
         $this->expectException(InvalidArgumentException::class);
         Column::make('x')->options([]);
     }
+
+    public function test_footer_totals_follow_the_filters(): void
+    {
+        $table = Livewire::test(FilterOrdersTable::class);
+        $html = preg_replace('/<!--.*?-->/s', '', $table->html());
+        self::assertMatchesRegularExpression('/<th scope="row" data-label="Customer"\s*>Total<\/th>/', $html);
+        self::assertMatchesRegularExpression('/data-label="Total · Sum"\s+class="adt-num"\s+title="Sum"\s*>5,350.40<\/td>/', $html);
+        $table->call('filterBy', 'total', ['max' => '100']);
+        self::assertSame(['total' => 229.9], array_map('floatval', $table->instance()->totals()));
+    }
+
+    public function test_the_json_endpoint_sends_totals(): void
+    {
+        \Illuminate\Support\Facades\Route::get('/totals', fn () => \Acunsoft\DataTable\Laravel\TableResponse::for(Order::query())->columns([
+            Column::make('total')->type('decimal')->sortable()->filterable()->sum(),
+            Column::make('created')->column('created_at')->type('datetime')->aggregate('max'),
+            Column::make('note')->aggregate('count'),
+        ]));
+        $json = $this->getJson('/totals?pageSize=2')->assertOk()->json();
+        self::assertEqualsWithDelta(5350.4, (float) $json['totals']['total'], 0.001);
+        self::assertSame('2026-10-24 09:00:00', $json['totals']['created']);
+        self::assertSame(4, (int) $json['totals']['note']); // COUNT skips NULL; an empty string is a value in SQL
+        self::assertCount(2, $json['rows']);
+    }
 }

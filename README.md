@@ -265,6 +265,18 @@ The tools menu holds everything that is not about the rows on screen: **export**
 controls) and **import** (`WithTableImport`). It only appears when at least one
 of them is on.
 
+### Footer totals
+
+```php
+Column::make('total')->type('decimal')->sum(),          // or ->aggregate('avg' | 'min' | 'max' | 'count')
+```
+
+A `<tfoot>` row shows the total over every row matching the search and
+filters, computed in one SQL query (`SUM`, `AVG`, …) next to the count. It is
+left out while the count is only "10,000+", since a total of an unknown
+number of rows would cost what the count saved. The JSON endpoint sends the
+same values as `totals`, which the browser packages show.
+
 ### Export and import
 
 ```php

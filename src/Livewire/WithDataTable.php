@@ -97,7 +97,7 @@ trait WithDataTable
     /** Livewire: `pageSize` in the URL, left out while it is the default. */
     protected function queryStringWithDataTable(): array
     {
-        return ['pageSize' => ['except' => $this->defaultPageSize()]];
+        return ['pageSize' => ['except' => $this->defaultPageSize(), 'history' => false]];
     }
 
     /**
@@ -332,6 +332,23 @@ trait WithDataTable
         }
 
         return $rows;
+    }
+
+    /**
+     * Footer totals of the columns with `aggregate()`, over every matching row;
+     * empty while the row count is a lower bound (a sum over millions of rows
+     * would slow every request).
+     *
+     * @return array<string, string|int|float|null>
+     */
+    #[Computed]
+    public function totals(): array
+    {
+        if (! $this->rows->totalIsExact()) {
+            return [];
+        }
+
+        return QueryApplier::aggregates($this->query(), $this->dataTableQuery(), $this->dataTableColumns());
     }
 
     /** @return list<Column> */

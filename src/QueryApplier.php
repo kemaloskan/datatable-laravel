@@ -162,6 +162,56 @@ final class QueryApplier
         return $exact === null ? [$limit, false] : [$exact, true];
     }
 
+    /**
+     * Footer totals of the columns with `aggregate()` over every row the query
+     * matches (search and filters; sorting and paging are ignored), in one SQL
+     * query. Averages are rounded to two decimals. Keys are column IDs; values
+     * are strings, numbers or null.
+     *
+     * @param iterable<Column> $columns
+     *
+     * @return array<string, string|int|float|null>
+     */
+    public static function aggregates(EloquentBuilder|QueryBuilder $builder, TableQuery $query, iterable $columns): array
+    {
+        $all = is_array($columns) ? $columns : iterator_to_array($columns, false);
+        $columns = array_values(array_filter($all, fn (Column $column) => $column->aggregateKind() !== null));
+        if ($columns === []) {
+            return [];
+        }
+        // Every column takes part in the search and filters; only the aggregated ones are selected.
+        $base = self::apply(clone $builder, $query, $all);
+        $base = $base instanceof EloquentBuilder ? $base->toBase() : $base;
+        $base = (clone $base)->reorder()->limit(null)->offset(null);
+        $grammar = $base->getGrammar();
+        $selects = [];
+        foreach ($columns as $index => $column) {
+            $wrapped = $grammar->wrap($column->databaseColumn());
+            $selects[] = match ($column->aggregateKind()) {
+                'sum' => "SUM({$wrapped})",
+                'avg' => "AVG({$wrapped})",
+                'min' => "MIN({$wrapped})",
+                'max' => "MAX({$wrapped})",
+                default => "COUNT({$wrapped})",
+            }." as adt_total_{$index}";
+        }
+        $base->columns = null;
+        $row = (array) $base->selectRaw(implode(', ', $selects))->first();
+        $totals = [];
+        foreach ($columns as $index => $column) {
+            $value = $row["adt_total_{$index}"] ?? null;
+            if ($value !== null && $column->aggregateKind() === 'avg') {
+                $value = number_format((float) $value, 2, '.', '');
+            } elseif (is_float($value) && $column->valueType() === 'decimal') {
+                // SQLite sums decimals as floats (PostgreSQL and MySQL return exact text): keep two decimals.
+                $value = number_format($value, 2, '.', '');
+            }
+            $totals[$column->id()] = $value;
+        }
+
+        return $totals;
+    }
+
     /** An exact count, or null when the database cannot finish it within `$ms`. */
     private static function countWithin(QueryBuilder $base, int $ms): ?int
     {

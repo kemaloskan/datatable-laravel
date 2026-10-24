@@ -119,16 +119,19 @@ final class TableResponse implements Responsable
     {
         try {
             $query = TableQuery::fromRequest($request, $this->maxPageSize, $this->defaultPageSize);
+            $fresh = clone $this->builder; // paginate() applies the query to the builder it gets
             $page = QueryApplier::paginate($this->builder, $query, $this->columns, $this->countLimit, $this->maxResultWindow, $this->countTimeout);
+            // Footer totals (columns with aggregate()) only while the count is exact.
+            $totals = $page->totalIsExact() ? QueryApplier::aggregates($fresh, $query, $this->columns) : [];
         } catch (InvalidTableQuery $error) {
             return new JsonResponse(['message' => $error->getMessage(), 'errors' => $error->errors], 422);
         }
 
         $rows = array_map(fn ($row) => $this->row($row), $page->items());
 
-        return new JsonResponse($page->totalIsExact()
+        return new JsonResponse(($page->totalIsExact()
             ? ['rows' => $rows, 'totalRows' => $page->total()]
-            : ['rows' => $rows, 'totalRowsAtLeast' => $page->total() + 1]);
+            : ['rows' => $rows, 'totalRowsAtLeast' => $page->total() + 1]) + ($totals === [] ? [] : ['totals' => $totals]));
     }
 
     /** @return array<string, mixed> */
