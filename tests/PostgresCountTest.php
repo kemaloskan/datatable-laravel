@@ -53,7 +53,7 @@ final class PostgresCountTest extends TestCase
 
         $pg->enableQueryLog();
         self::assertSame([1000, false], QueryApplier::count($slow(), 1000, 1));
-        self::assertCount(1, $pg->getQueryLog()); // only the cheap bounded count: the slow one is remembered
+        self::assertCount(1, $pg->getQueryLog()); // only the bounded count: the slow one is remembered
         Cache::flush();
     }
 

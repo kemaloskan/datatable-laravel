@@ -119,8 +119,10 @@ trait WithDataTable
     }
 
     /**
-     * Up to this many matches (default 10,000) the count is always exact and
-     * cheap. Beyond it an exact count gets `countTimeout()`; only when that is
+     * Up to this many matches (default 10,000) the count is exact. It stops
+     * after the limit + 1 matches, but when few rows match and no index serves
+     * the filter, finding them can still read the whole table: its cost
+     * depends on the query, the indexes and the database. Beyond it an exact count gets `countTimeout()`; only when that is
      * not enough the view shows "10,000+". `null` counts everything, always.
      */
     protected function countLimit(): ?int
@@ -171,10 +173,13 @@ trait WithDataTable
     }
 
     /**
-     * Keyset paging: every page costs what page 2 does, at any depth, and no
+     * Keyset paging: a page continues after the last row of the page before,
+     * through an index, instead of reading and skipping `OFFSET` rows (on
+     * 5,000,000 PostgreSQL rows page 100,001 took 55.5 ms with the count,
+     * against 3,898 ms by `OFFSET`; other tables and databases: measure). No
      * result window applies. Pages are reached one after another (the pager
-     * offers those seen so far and the next one). Sort columns should not
-     * hold NULLs.
+     * offers those seen so far and the next one). Mark sort columns that may
+     * hold NULL with `Column::nullable()`.
      */
     protected function cursorPaging(): bool
     {

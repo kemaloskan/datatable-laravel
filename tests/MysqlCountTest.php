@@ -67,7 +67,7 @@ final class MysqlCountTest extends TestCase
 
         $my->enableQueryLog();
         self::assertSame([1000, false], QueryApplier::count($slow(), 1000, 1));
-        self::assertCount(1, $my->getQueryLog()); // only the cheap bounded count: the slow one is remembered
+        self::assertCount(1, $my->getQueryLog()); // only the bounded count: the slow one is remembered
         Cache::flush();
     }
 }

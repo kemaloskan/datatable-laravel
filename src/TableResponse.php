@@ -67,10 +67,12 @@ final class TableResponse implements Responsable
     }
 
     /**
-     * Up to this many matches (default 10,000) the count is always exact and
-     * cheap. Beyond it an exact count gets `countTimeout()`; when that is not
+     * Up to this many matches (default 10,000) the count is exact. It stops
+     * after the limit + 1 matches, but when few rows match and no index serves
+     * the filter, finding them can still read the whole table: its cost
+     * depends on the query, the indexes and the database. Beyond it an exact count gets `countTimeout()`; when that is not
      * enough, `totalRows` is left out and `totalRowsAtLeast` is sent. `null`
-     * counts every match without a time limit, which is slow on large tables.
+     * counts every match without a time limit, reading every matching row.
      */
     public function countLimit(?int $limit): self
     {

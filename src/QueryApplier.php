@@ -106,7 +106,7 @@ final class QueryApplier
             $model = $builder->getModel();
             if (! in_array($model->getKeyName(), $sortedColumns, true) && ! in_array($model->getQualifiedKeyName(), $sortedColumns, true)) {
                 // Stable pages. Same direction as the last sort rule, so an index on
-                // (sorted column, key) serves the whole ORDER BY (27× faster deep pages).
+                // (sorted column, key) serves the whole ORDER BY (deep pages 27× faster, measured on 5M PostgreSQL rows).
                 $builder->orderBy($model->getQualifiedKeyName(), $query->sorting === [] ? 'asc' : $query->sorting[array_key_last($query->sorting)]['direction']);
             }
         }
@@ -118,7 +118,9 @@ final class QueryApplier
      * Apply the query and fetch one page.
      *
      * - `$countLimit` (default 10,000) and `$countTimeout` (default 250 ms): up
-     *   to the limit the count is always exact and cheap. Beyond it an exact
+     *   to the limit the count is exact (it stops after `$countLimit` + 1
+     *   matches; rare matches no index serves can still read the whole
+     *   table, so its cost depends on the query and the database). Beyond it an exact
      *   COUNT(*) runs with a time limit (PostgreSQL, MySQL, MariaDB); only when
      *   it would take longer, TablePage::totalIsExact() is false and the UI
      *   shows "10,000+". `$countLimit = null` always counts everything without
@@ -133,9 +135,10 @@ final class QueryApplier
      */
     /**
      * Keyset paging: the page after `$query->cursor`, continuing after the
-     * last row of the page before by its sort values and key, so page 100,000
-     * costs what page 2 does (0.05 ms against 3.8 s for the `OFFSET` on
-     * 5,000,000 PostgreSQL rows). The condition is index-friendly on every
+     * last row of the page before by its sort values and key, through an index
+     * instead of skipping `OFFSET` rows (measured on 5,000,000 PostgreSQL
+     * rows: page 100,000 in 0.05 ms against 3.8 s by `OFFSET`; the cost on
+     * other tables and databases depends on their indexes). The condition is index-friendly on every
      * database: the first sort column is bounded (`a <= x`) before the exact
      * lexicographic test, which plain `a < x OR (a = x AND …)` is not on
      * PostgreSQL. No result window applies. Mark sort columns that may hold
@@ -374,7 +377,7 @@ final class QueryApplier
         $connection = $base->getConnection();
         $driver = $connection->getDriverName();
         if (! in_array($driver, ['pgsql', 'mysql', 'mariadb'], true)) {
-            return null; // no per-statement time limit: keep the cheap lower bound
+            return null; // no per-statement time limit: keep the lower bound
         }
         $slow = 'acun-datatable:slow-count:'.sha1($connection->getName()."\0".$base->toSql()."\0".serialize($base->getBindings()));
         $cache = self::cache();
@@ -537,8 +540,8 @@ final class QueryApplier
     /** The calendar day as written by the client (it sends local dates), e.g. 2026-10-23. */
     /**
      * Compare with a whole calendar day as a half-open range, never as
-     * `DATE(column)`: the column stays bare, so its index is used (22× faster
-     * on 5M rows), and no database session timezone is involved.
+     * `DATE(column)`: the column stays bare, so its index is used (22× faster,
+     * measured on 5M PostgreSQL rows), and no database session timezone is involved.
      * `=` is [day, next day), `>` is ≥ next day, `<` is < day, `>=` is ≥ day,
      * `<=` is < next day (also the bounds of `between`).
      */

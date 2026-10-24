@@ -535,8 +535,10 @@ Column::make('customer')->sortable()->filterable()->searchUsing('customer_search
 ## Large tables (millions of rows)
 
 The browser only ever holds one page, so table size is a database question.
-These defaults keep requests fast; the numbers are medians measured on
-**5,000,000 rows in PostgreSQL 17** (Apple M2, 25 rows per page, count + page):
+What these defaults did in one measurement — medians on **5,000,000 rows in
+PostgreSQL 17** (Apple M2, 25 rows per page, count + page). Other tables,
+filters, indexes and databases give other numbers; measure yours
+(`bench/` in the repository):
 
 | One request (count + page) | Before 0.3 | 0.3 defaults | + recommended indexes |
 |---|---|---|---|
@@ -555,12 +557,16 @@ GIN trigram index (step 2 below).
 
 What the package does for you:
 
-- **Exact counts within a time limit.** Up to 10,000 matches the count stops
-  early and is always exact. Past that, an exact `COUNT(*)` gets 250 ms
+- **Exact counts within a time limit.** Up to 10,000 matches the count is
+  exact and stops after the 10,001st match. That is usually a few
+  milliseconds, but not always: when few rows match and no index serves the
+  filter, finding them reads the whole table (716 ms on 5,000,000 rows, see
+  [bench/](../../bench/results/postgres-5m.md)), so index the filters your
+  users need. Past that, an exact `COUNT(*)` gets 250 ms
   (PostgreSQL `statement_timeout`, MySQL `max_execution_time`, MariaDB
   `max_statement_time`, set only for that statement and restored; inside a
   transaction it runs in a savepoint). On 5,000,000 rows that is enough for the
-  whole table (57 ms) and for most filters, so the table says "Toplam:
+  whole table (65 ms) and for most filters, so the table says "Toplam:
   5.000.000 kaydın 1 ile 25 arasını gösteriyor". Only a count that would take
   longer falls back to "10,000+" (Livewire) or `totalRowsAtLeast` instead of
   `totalRows` (JSON), with "next page" from fetching one extra row; that query
