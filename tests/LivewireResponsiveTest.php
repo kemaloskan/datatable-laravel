@@ -1,0 +1,79 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Acunsoft\DataTable\Laravel\Tests;
+
+use Acunsoft\DataTable\Laravel\Column;
+use Acunsoft\DataTable\Laravel\DataTableServiceProvider;
+use Acunsoft\DataTable\Laravel\Tests\Fixtures\Order;
+use Acunsoft\DataTable\Laravel\Tests\Fixtures\ResponsiveOrdersTable;
+use InvalidArgumentException;
+use Livewire\Livewire;
+use Livewire\LivewireServiceProvider;
+
+final class LivewireResponsiveTest extends TestCase
+{
+    protected function getPackageProviders($app): array
+    {
+        return [LivewireServiceProvider::class, DataTableServiceProvider::class];
+    }
+
+    public function test_cards_and_scroll_only_mark_the_mode(): void
+    {
+        $html = Livewire::test(ResponsiveOrdersTable::class)->html();
+        self::assertStringContainsString('adt-table-wrap adt-responsive--cards', $html);
+        self::assertStringNotContainsString('adt-expand', $html);
+        self::assertStringNotContainsString('adt-col--p', $html);
+        $html = Livewire::test(ResponsiveOrdersTable::class, ['mode' => 'scroll'])->html();
+        self::assertStringContainsString('adt-responsive--scroll', $html);
+        $html = Livewire::test(ResponsiveOrdersTable::class, ['mode' => 'sideways'])->html();
+        self::assertStringContainsString('adt-responsive--cards', $html); // unknown: the default
+    }
+
+    public function test_collapse_marks_priorities_and_renders_a_details_row(): void
+    {
+        $html = Livewire::test(ResponsiveOrdersTable::class, ['mode' => 'collapse'])->html();
+        self::assertStringContainsString('class="adt-table adt-has-p2 adt-has-p3"', $html);
+        preg_match_all('/<th scope="col" class="([^"]+)"/', $html, $headers);
+        self::assertSame(['adt-th adt-col--p1', 'adt-th adt-col--p2', 'adt-th adt-col--p1', 'adt-th adt-col--p3', 'adt-th adt-actions adt-col--p2'], $headers[1]);
+        self::assertMatchesRegularExpression('/<button type="button" class="adt-expand" aria-label="Details of Ayşe Yılmaz"\s+aria-expanded="false" aria-controls="(adt-[^"]+-detail-0)"/', $html);
+        preg_match('/aria-controls="(adt-[^"]+-detail-0)"/', $html, $id);
+        $detail = substr($html, strpos($html, 'id="'.$id[1].'"'));
+        $detail = substr($detail, 0, strpos($detail, '</tr>'));
+        self::assertStringContainsString('x-show="open"', $detail);
+        self::assertMatchesRegularExpression('/adt-detail-item adt-col--p2">\s*<dt>City<\/dt>\s*<dd>İstanbul<\/dd>/', $detail);
+        self::assertMatchesRegularExpression('/adt-detail-item adt-col--p3">\s*<dt>Note<\/dt>\s*<dd>VIP<\/dd>/', $detail);
+        self::assertStringNotContainsString('<dt>Customer</dt>', $detail); // priority 1 stays in the row
+        self::assertStringContainsString('aria-label="Remove: Ayşe Yılmaz"', $detail);
+    }
+
+    public function test_modal_renders_a_labelled_dialog_with_every_value(): void
+    {
+        app()->setLocale('tr');
+        $table = Livewire::test(ResponsiveOrdersTable::class, ['mode' => 'modal']);
+        $html = $table->html();
+        self::assertStringContainsString('aria-label="Ayşe Yılmaz ayrıntıları" aria-haspopup="dialog"', $html);
+        $dialog = substr($html, strpos($html, '<dialog'));
+        $dialog = substr($dialog, 0, strpos($dialog, '</dialog>'));
+        self::assertStringContainsString('wire:ignore.self', $dialog);
+        self::assertMatchesRegularExpression('/<h2 class="adt-dialog-title" id="(adt-[^"]+-title)">Ayşe Yılmaz ayrıntıları<\/h2>/', $dialog);
+        preg_match_all('/<dt>([^<]+)<\/dt>/', $dialog, $labels);
+        self::assertSame(['Customer', 'City', 'Total', 'Note', 'İşlemler'], $labels[1]);
+        self::assertStringContainsString('aria-label="Kapat"', $dialog);
+        $table->call('runRowAction', 'remove', '1');
+        self::assertNull(Order::query()->find(1)); // actions in the dialog run like the row's
+    }
+
+    public function test_size_classes_and_priority_validation(): void
+    {
+        self::assertStringContainsString('class="adt adt-size--sm"', Livewire::test(ResponsiveOrdersTable::class, ['density' => 'sm'])->html());
+        self::assertStringContainsString('class="adt adt-size--lg"', Livewire::test(ResponsiveOrdersTable::class, ['density' => 'lg'])->html());
+        self::assertStringContainsString(' class="adt">', Livewire::test(ResponsiveOrdersTable::class)->html());
+        self::assertSame(1, Column::make('a')->priorityAt(0));
+        self::assertSame(2, Column::make('a')->priorityAt(3));
+        self::assertSame(3, Column::make('a')->priority(3)->priorityAt(0));
+        $this->expectException(InvalidArgumentException::class);
+        Column::make('a')->priority(4);
+    }
+}

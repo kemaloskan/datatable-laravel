@@ -135,6 +135,23 @@ trait WithDataTable
         return ['siblings' => 1, 'boundaries' => 1, 'firstLast' => false];
     }
 
+    /**
+     * Narrow screens: `cards` (default) shows each row as a card; `scroll`
+     * keeps the table and scrolls it sideways; `collapse` hides lower-priority
+     * columns (`Column::priority()`) behind a button that opens them below the
+     * row; `modal` opens every value of the row in a dialog instead.
+     */
+    protected function responsive(): string
+    {
+        return 'cards';
+    }
+
+    /** Density: `sm` compact, `md` (default) or `lg` spacious. */
+    protected function tableSize(): string
+    {
+        return 'md';
+    }
+
     /** Show "Print" in the tools menu (prints the visible page without the controls). */
     protected function printable(): bool
     {

@@ -19,6 +19,7 @@ return [
     'print' => 'Yazdır',
     'import_open' => 'İçe aktar…',
     'import_choose' => 'Dosya seç',
+    'details' => ':name ayrıntıları',
     'close' => 'Kapat',
     'page_size' => 'Sayfa başına satır',
     'yes' => 'Evet',

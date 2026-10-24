@@ -171,6 +171,30 @@ protected function pagingOptions(): array
 }
 ```
 
+**Narrow screens and sizes.** Choose how the table behaves on phones and how
+dense it is:
+
+```php
+protected function responsive(): string { return 'collapse'; } // cards (default), scroll, collapse, modal
+protected function tableSize(): string { return 'sm'; }         // sm, md (default), lg
+
+protected function columns(): array
+{
+    return [
+        Column::make('customer')->header('Müşteri'),              // first column: always shown
+        Column::make('total')->header('Tutar')->priority(1),      // stays on phones too
+        Column::make('email')->header('E-posta')->priority(3),    // hides below 960px already
+        Column::make('city')->header('Şehir'),                    // default 2: hides below 640px
+    ];
+}
+```
+
+`cards` turns every row into a card, `scroll` keeps the table and scrolls it
+sideways, `collapse` hides lower-priority columns behind a ⊕ button that opens
+their values below the row (DataTables Responsive style), and `modal` opens
+every value of the row, with its actions, in a native `<dialog>` (Escape, ✕ or
+a click outside closes it). The button only appears while columns are hidden.
+
 Every text can be changed for one table with `texts()`, by the keys of the
 package's language file, for example a noun that fits the rows (Turkish
 suffixes cannot be generated, so give the whole sentence):

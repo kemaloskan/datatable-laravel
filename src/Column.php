@@ -28,6 +28,7 @@ final class Column
     private ?Closure $formatter = null;
     private bool $hideable = true;
     private bool $hidden = false;
+    private ?int $priority = null;
 
     private function __construct(private readonly string $id)
     {
@@ -112,6 +113,24 @@ final class Column
     {
         return $this->with('hidden', $hidden);
     }
+
+    /**
+     * Which columns stay on narrow screens with `responsive()` `collapse` or
+     * `modal`: 1 always, 2 hidden below 640px, 3 hidden below 960px; hidden
+     * values move into the row's details. Default: 1 for the first visible
+     * column, 2 for the others.
+     */
+    public function priority(int $priority): self
+    {
+        if (! in_array($priority, [1, 2, 3], true)) {
+            throw new InvalidArgumentException("Column [{$this->id}] priority must be 1, 2 or 3.");
+        }
+
+        return $this->with('priority', $priority);
+    }
+
+    /** The responsive priority at a position among the visible columns. */
+    public function priorityAt(int $index): int { return $this->priority ?? ($index === 0 ? 1 : 2); }
 
     public function formatter(): ?Closure { return $this->formatter; }
     public function isHideable(): bool { return $this->hideable; }

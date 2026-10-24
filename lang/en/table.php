@@ -19,6 +19,7 @@ return [
     'print' => 'Print',
     'import_open' => 'Import…',
     'import_choose' => 'Choose file',
+    'details' => 'Details of :name',
     'close' => 'Close',
     'page_size' => 'Rows per page',
     'yes' => 'Yes',

@@ -19,6 +19,7 @@ return [
     'print' => 'Imprimir',
     'import_open' => 'Importar…',
     'import_choose' => 'Elegir archivo',
+    'details' => 'Detalles de :name',
     'close' => 'Cerrar',
     'page_size' => 'Filas por página',
     'yes' => 'Sí',
