@@ -8,7 +8,7 @@
         @if ($all || $level > 1)
             <div class="adt-detail-item{{ $all ? '' : ' adt-col--p'.$level }}">
                 <dt>{{ $column->headerText() }}</dt>
-                <dd>{{ \Acunsoft\DataTable\Laravel\Support\Format::cell($column, $row) }}</dd>
+                <dd>@include('acun-datatable::livewire.cell')</dd>
             </div>
         @endif
     @endforeach

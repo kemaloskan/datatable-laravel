@@ -19,7 +19,7 @@ final class LivewireColumnsTest extends TestCase
     /** @return list<string> visible data column headers */
     private function headers(string $html): array
     {
-        preg_match_all('/<th scope="col" class="adt-th"[^>]*>(.*?)<\/th>/s', $html, $matches);
+        preg_match_all('/<th scope="col" class="adt-th(?: adt-num)?"[^>]*>(.*?)<\/th>/s', $html, $matches);
 
         return array_map(fn (string $cell) => trim(preg_replace('/[▲▼]\d*/u', '', strip_tags($cell))), $matches[1]);
     }

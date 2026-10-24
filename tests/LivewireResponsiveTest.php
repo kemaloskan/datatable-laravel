@@ -36,11 +36,11 @@ final class LivewireResponsiveTest extends TestCase
         $html = Livewire::test(ResponsiveOrdersTable::class, ['mode' => 'collapse'])->html();
         self::assertStringContainsString('class="adt-table adt-has-p2 adt-has-p3"', $html);
         preg_match_all('/<th scope="col" class="([^"]+)"/', $html, $headers);
-        self::assertSame(['adt-th adt-col--p1', 'adt-th adt-col--p2', 'adt-th adt-col--p1', 'adt-th adt-col--p3', 'adt-th adt-actions adt-col--p2'], $headers[1]);
+        self::assertSame(['adt-th adt-col--p1', 'adt-th adt-col--p2', 'adt-th adt-col--p1 adt-num', 'adt-th adt-col--p3', 'adt-th adt-actions adt-col--p2'], $headers[1]);
         self::assertMatchesRegularExpression('/<button type="button" class="adt-expand" aria-label="Details of Ayşe Yılmaz"\s+aria-expanded="false" aria-controls="(adt-[^"]+-detail-0)"/', $html);
         preg_match('/aria-controls="(adt-[^"]+-detail-0)"/', $html, $id);
         $detail = substr($html, strpos($html, 'id="'.$id[1].'"'));
-        $detail = substr($detail, 0, strpos($detail, '</tr>'));
+        $detail = preg_replace('/<!--.*?-->/s', '', substr($detail, 0, strpos($detail, '</tr>'))); // without Livewire's markers
         self::assertStringContainsString('x-show="open"', $detail);
         self::assertMatchesRegularExpression('/adt-detail-item adt-col--p2">\s*<dt>City<\/dt>\s*<dd>İstanbul<\/dd>/', $detail);
         self::assertMatchesRegularExpression('/adt-detail-item adt-col--p3">\s*<dt>Note<\/dt>\s*<dd>VIP<\/dd>/', $detail);

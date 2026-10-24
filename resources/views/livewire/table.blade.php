@@ -82,7 +82,7 @@
                                 $position = collect($sorting)->search(fn ($rule) => $rule['field'] === $column->id());
                                 $rule = $position === false ? null : $sorting[$position];
                             @endphp
-                            <th scope="col" class="adt-th{{ $collapsible ? ' adt-col--p'.$column->priorityAt($index) : '' }}"
+                            <th scope="col" class="adt-th{{ $collapsible ? ' adt-col--p'.$column->priorityAt($index) : '' }}{{ $column->isNumeric() ? ' adt-num' : '' }}"
                                 @if ($position === 0) aria-sort="{{ $rule['direction'] === 'asc' ? 'ascending' : 'descending' }}" @endif>
                                 @if ($column->isSortable())
                                     <button type="button"
@@ -148,7 +148,8 @@
                                 </td>
                             @endif
                             @foreach ($columns as $index => $column)
-                                <td data-label="{{ $column->headerText() }}" @if ($collapsible) class="adt-col--p{{ $column->priorityAt($index) }}" @endif>{{ \Acunsoft\DataTable\Laravel\Support\Format::cell($column, $row) }}</td>
+                                @php $cellClass = trim(($collapsible ? 'adt-col--p'.$column->priorityAt($index) : '').($column->isNumeric() ? ' adt-num' : '')); @endphp
+                                <td data-label="{{ $column->headerText() }}" @if ($cellClass !== '') class="{{ $cellClass }}" @endif>@include('acun-datatable::livewire.cell')</td>
                             @endforeach
                             @if ($rowActions !== [])
                                 <td class="adt-actions{{ $collapsible ? ' adt-col--p2' : '' }}" data-label="{{ $this->tableText('actions') }}">

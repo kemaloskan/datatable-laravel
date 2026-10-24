@@ -29,6 +29,7 @@ final class Column
     private bool $hideable = true;
     private bool $hidden = false;
     private ?int $priority = null;
+    private ?string $view = null;
 
     private function __construct(private readonly string $id)
     {
@@ -128,6 +129,22 @@ final class Column
 
         return $this->with('priority', $priority);
     }
+
+    /**
+     * Render the cell with a Blade view instead of plain text (Livewire), e.g.
+     * a status badge. The view gets `$row`, `$value` (raw), `$text` (the
+     * formatted text) and `$column`; escape with `{{ }}` as usual. Exports,
+     * search and JSON keep using the plain value and text.
+     */
+    public function view(string $view): self
+    {
+        return $this->with('view', $view);
+    }
+
+    public function cellView(): ?string { return $this->view; }
+
+    /** Numbers and decimals: right-aligned in the views (`adt-num`). */
+    public function isNumeric(): bool { return in_array($this->type, ['number', 'decimal'], true); }
 
     /** The responsive priority at a position among the visible columns. */
     public function priorityAt(int $index): int { return $this->priority ?? ($index === 0 ? 1 : 2); }

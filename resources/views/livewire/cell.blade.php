@@ -1,0 +1,2 @@
+{{-- The content of one cell: the column's own view (Column::view()) or its plain text. --}}
+@if ($column->cellView() !== null)@include($column->cellView(), ['row' => $row, 'value' => data_get($row, $column->attributeName()), 'text' => \Acunsoft\DataTable\Laravel\Support\Format::cell($column, $row), 'column' => $column])@else{{ \Acunsoft\DataTable\Laravel\Support\Format::cell($column, $row) }}@endif

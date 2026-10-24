@@ -101,6 +101,16 @@ final class LivewireLayoutTest extends TestCase
         self::assertStringContainsString('adt-import adt-import--idle', $html); // panel closed until a file is chosen
     }
 
+    public function test_a_column_view_renders_the_cell_and_numbers_align_right(): void
+    {
+        Order::query()->whereKey(1)->update(['customer' => '<i>x</i>']);
+        $html = Livewire::test(LayoutOrdersTable::class)->html();
+        self::assertStringContainsString('<b class="pill" data-raw="120.50">120.50</b>', $html);
+        self::assertMatchesRegularExpression('/<td data-label="Total"\s+class="adt-num"\s*>/', $html);
+        self::assertStringContainsString('<th scope="col" class="adt-th adt-num"', $html);
+        self::assertStringContainsString('&lt;i&gt;x&lt;/i&gt;', $html); // plain cells stay escaped
+    }
+
     /** @return list<string> */
     private function pagerItems(string $html): array
     {

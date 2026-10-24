@@ -13,7 +13,7 @@ final class LayoutOrdersTable extends \Livewire\Component
     {
         return [
             \Acunsoft\DataTable\Laravel\Column::make('customer')->header('Customer')->sortable()->filterable()->searchUsing('customer_search'),
-            \Acunsoft\DataTable\Laravel\Column::make('total')->header('Total')->type('decimal')->sortable(),
+            \Acunsoft\DataTable\Laravel\Column::make('total')->header('Total')->type('decimal')->sortable()->view('fixtures::pill'),
         ];
     }
 
