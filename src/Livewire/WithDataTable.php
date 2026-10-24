@@ -71,6 +71,9 @@ trait WithDataTable
     #[Locked]
     public array $excluded = [];
 
+    /** @var array<int, mixed> keys of the rows whose child row (`detailView()`) is open */
+    public array $openDetails = [];
+
     /** @return iterable<Column> */
     abstract protected function columns(): iterable;
 
@@ -170,12 +173,20 @@ trait WithDataTable
         return 'md';
     }
 
-    /**
-     * Keep the header row at the top of the window while the page scrolls
-     * (DataTables `fixedHeader`). Below a fixed top bar set `--adt-sticky-top`.
-     */
     /** Row actions shown as buttons in the row; the rest go into a "⋮" menu. `null`: all in the row. */
     protected function maxInlineActions(): ?int
+    {
+        return null;
+    }
+
+    /**
+     * A child row under each row (DataTables child rows): the name of a Blade
+     * view, rendered with `$row` and `$key` once its ⊕ button opens it, so it
+     * may load relations or run queries for that row only (shown as
+     * "Loading…" meanwhile). With `responsive()` `modal` it opens in the
+     * dialog. `null` (default): no child rows.
+     */
+    protected function detailView(): ?string
     {
         return null;
     }
@@ -186,6 +197,10 @@ trait WithDataTable
         return true;
     }
 
+    /**
+     * Keep the header row at the top of the window while the page scrolls
+     * (DataTables `fixedHeader`). Below a fixed top bar set `--adt-sticky-top`.
+     */
     protected function stickyHeader(): bool
     {
         return false;
@@ -528,6 +543,38 @@ trait WithDataTable
     public function updatedPageSize(): void
     {
         $this->resetPage();
+    }
+
+    // Child rows -----------------------------------------------------------
+
+    /** Open or close a row's child row (`detailView()`); `null` toggles. Only rows of the current page open. */
+    public function toggleDetail(string|int $key, ?bool $open = null): void
+    {
+        $key = (string) $key;
+        $keys = $this->openDetailKeys();
+        $isOpen = in_array($key, $keys, true);
+        if ($open ?? ! $isOpen) {
+            if (! $isOpen && $this->detailView() !== null && in_array($key, $this->pageKeys(), true)) {
+                $keys = array_slice([...$keys, $key], -100);
+            }
+        } else {
+            $keys = array_values(array_diff($keys, [$key]));
+        }
+        $this->openDetails = $keys;
+    }
+
+    protected function detailIsOpen(string $key): bool
+    {
+        return in_array($key, $this->openDetailKeys(), true);
+    }
+
+    /** @return list<string> */
+    private function openDetailKeys(): array
+    {
+        return array_values(array_unique(array_map('strval', array_filter(
+            $this->openDetails,
+            fn ($key) => (is_string($key) || is_int($key)) && strlen((string) $key) <= 64,
+        ))));
     }
 
     // Selection ------------------------------------------------------------

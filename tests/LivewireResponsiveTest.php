@@ -8,6 +8,7 @@ use Acunsoft\DataTable\Laravel\Column;
 use Acunsoft\DataTable\Laravel\DataTableServiceProvider;
 use Acunsoft\DataTable\Laravel\Tests\Fixtures\Order;
 use Acunsoft\DataTable\Laravel\Tests\Fixtures\ResponsiveOrdersTable;
+use Illuminate\Support\Facades\View;
 use InvalidArgumentException;
 use Livewire\Livewire;
 use Livewire\LivewireServiceProvider;
@@ -85,5 +86,44 @@ final class LivewireResponsiveTest extends TestCase
         self::assertStringContainsString('style="--adt-scroll-y: 60vh"', $html);
         $html = Livewire::test(ResponsiveOrdersTable::class, ['height' => '1px;color:red'])->html();
         self::assertStringNotContainsString('adt-scroll-y', $html); // not a plain length: ignored
+    }
+
+    public function test_detail_view_opens_a_child_row_rendered_on_demand(): void
+    {
+        View::addNamespace('fixtures', __DIR__.'/Fixtures/views');
+        $table = Livewire::test(ResponsiveOrdersTable::class, ['detail' => 'fixtures::order-lines']);
+        $html = $table->html();
+        self::assertStringContainsString('class="adt-table adt-has-detail"', $html);
+        self::assertSame(substr_count($html, '<tr class="adt-row'), substr_count($html, 'class="adt-expand"')); // every row, in cards mode too
+        self::assertStringNotContainsString('Lines of', $html); // nothing is rendered before a row opens
+        self::assertStringContainsString('x-on:click="open = ! open; $wire.toggleDetail(&#039;1&#039;, open)"', $html);
+
+        $html = $table->call('toggleDetail', '1', true)->html();
+        self::assertStringContainsString('<p class="lines">Lines of Ayşe Yılmaz (#1)</p>', $html);
+        self::assertStringContainsString('x-data="{ open: true }"', $html);
+        self::assertMatchesRegularExpression('/aria-expanded="true" aria-controls="adt-[^"]+-detail-0"/', $html);
+        self::assertSame(1, substr_count($html, 'Lines of'));
+
+        $table->call('toggleDetail', '999'); // not on the page: ignored
+        self::assertSame(['1'], $table->get('openDetails'));
+        $html = $table->call('toggleDetail', '1')->html();
+        self::assertStringNotContainsString('Lines of', $html);
+    }
+
+    public function test_detail_view_in_collapse_and_modal(): void
+    {
+        View::addNamespace('fixtures', __DIR__.'/Fixtures/views');
+        $html = Livewire::test(ResponsiveOrdersTable::class, ['mode' => 'collapse', 'detail' => 'fixtures::order-lines'])
+            ->call('toggleDetail', '1')->html();
+        $detail = substr($html, strpos($html, 'class="adt-detail"'));
+        $detail = preg_replace('/<!--.*?-->/s', '', substr($detail, 0, strpos($detail, '</tr>')));
+        self::assertMatchesRegularExpression('/<dl class="adt-detail-list">.*<\/dl>\s*<div class="adt-detail-content"\s*>\s*<p class="lines">Lines of Ayşe Yılmaz/s', $detail);
+
+        $html = Livewire::test(ResponsiveOrdersTable::class, ['mode' => 'modal', 'detail' => 'fixtures::order-lines'])->html();
+        self::assertStringContainsString('showModal(); $wire.toggleDetail(&#039;1&#039;, true)', $html);
+        $dialog = substr($html, strpos($html, '<dialog'));
+        $dialog = substr($dialog, 0, strpos($dialog, '</dialog>'));
+        self::assertMatchesRegularExpression('/<div class="adt-detail-content"\s+aria-busy="true"/', $dialog); // loads once opened
+        self::assertStringNotContainsString('class="adt-detail"', $html); // no inline child row in modal mode
     }
 }

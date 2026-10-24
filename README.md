@@ -265,6 +265,30 @@ The tools menu holds everything that is not about the rows on screen: **export**
 controls) and **import** (`WithTableImport`). It only appears when at least one
 of them is on.
 
+### Child rows
+
+```php
+protected function detailView(): ?string
+{
+    return 'orders.lines'; // rendered with $row and $key
+}
+```
+
+```blade
+{{-- resources/views/orders/lines.blade.php --}}
+<ul>
+    @foreach ($row->lines as $line)
+        <li>{{ $line->product }} × {{ $line->quantity }}</li>
+    @endforeach
+</ul>
+```
+
+Every row gets a ⊕ button that opens the view below it (DataTables child
+rows; in the dialog with `responsive()` `modal`, after the row's values). The
+view is rendered only for open rows, once the button is pressed, so it can
+load relations or run queries for that row alone; "Loading…" shows
+meanwhile. Only rows of the current page open (`toggleDetail($key)`).
+
 ### Footer totals
 
 ```php

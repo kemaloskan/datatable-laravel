@@ -20,6 +20,8 @@ final class ResponsiveOrdersTable extends \Livewire\Component
 
     public ?string $height = null;
 
+    public ?string $detail = null;
+
     protected function columns(): array
     {
         return [
@@ -53,6 +55,11 @@ final class ResponsiveOrdersTable extends \Livewire\Component
     protected function scrollY(): ?string
     {
         return $this->height;
+    }
+
+    protected function detailView(): ?string
+    {
+        return $this->detail;
     }
 
     protected function tableSize(): string

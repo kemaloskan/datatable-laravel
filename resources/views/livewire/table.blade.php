@@ -19,11 +19,14 @@
     $bulkActions = $selectable ? $this->dataTableBulkActions() : [];
     $responsive = in_array($this->responsive(), ['cards', 'scroll', 'collapse', 'modal'], true) ? $this->responsive() : 'cards';
     $collapsible = in_array($responsive, ['collapse', 'modal'], true);
+    $detailView = $this->detailView();
+    $expandable = $collapsible || $detailView !== null;
+    $inline = $responsive === 'collapse' || ($detailView !== null && $responsive !== 'modal'); // opens below the row
     $size = in_array($this->tableSize(), ['sm', 'md', 'lg'], true) ? $this->tableSize() : 'md';
     $scrollY = is_string($this->scrollY()) && preg_match('/^\d+(\.\d+)?(px|rem|em|vh|dvh|svh|%)$/', trim($this->scrollY())) ? trim($this->scrollY()) : null;
     $levels = collect($columns)->map(fn ($column, $index) => $column->priorityAt($index))->values()->all();
     if ($rowActions !== []) { $levels[] = 2; }
-    $span = count($columns) + ($selectable ? 1 : 0) + ($rowActions === [] ? 0 : 1) + ($collapsible ? 1 : 0);
+    $span = count($columns) + ($selectable ? 1 : 0) + ($rowActions === [] ? 0 : 1) + ($expandable ? 1 : 0);
     $layout = $this->dataTableLayout();
     $appliedFilters = $this->dataTableQuery()->filters;
     $filterChips = collect($allColumns)->filter(fn ($column) => $column->hasFilter())
@@ -73,14 +76,14 @@
         wire:loading.class="adt-loading" wire:loading.attr="aria-busy">
         <div class="adt-notice" role="status" wire:loading>{{ $this->tableText('loading') }}</div>
         <div class="adt-scroll">
-            <table @class(['adt-table', 'adt-has-p2' => $collapsible && in_array(2, $levels, true), 'adt-has-p3' => $collapsible && in_array(3, $levels, true)])
+            <table @class(['adt-table', 'adt-has-p2' => $collapsible && in_array(2, $levels, true), 'adt-has-p3' => $collapsible && in_array(3, $levels, true), 'adt-has-detail' => $detailView !== null])
                 @if ($selectable) x-data="{ anchor: null }" @endif>
                 @if ($this->caption() !== null)
                     <caption>{{ $this->caption() }}</caption>
                 @endif
                 <thead>
                     <tr>
-                        @if ($collapsible)
+                        @if ($expandable)
                             <td class="adt-expand-cell"></td>
                         @endif
                         @if ($selectable)
@@ -124,28 +127,30 @@
                         $selected = $selectable && $this->isSelected($key);
                         $name = $this->rowLabel($row);
                         $detailId = 'adt-'.$this->getId().'-detail-'.$loop->index;
+                        $detailOpen = $detailView !== null && $this->detailIsOpen($key);
+                        $jsKey = \Illuminate\Support\Js::from($key);
                     @endphp
                     {{-- One <tbody> per row, so a row and its details share their Alpine state. --}}
-                    <tbody wire:key="adt-row-{{ $key }}" @if ($responsive === 'collapse') x-data="{ open: false }" @endif>
-                        <tr class="adt-row{{ $selected ? ' adt-row--selected' : '' }}" data-row-id="{{ $key }}"
-                            @if ($responsive === 'collapse') x-bind:class="{ 'adt-row--expanded': open }" @endif>
-                            @if ($collapsible)
+                    <tbody wire:key="adt-row-{{ $key }}" @if ($inline) x-data="{ open: {{ $detailOpen ? 'true' : 'false' }} }" @endif>
+                        <tr class="adt-row{{ $selected ? ' adt-row--selected' : '' }}{{ $detailOpen ? ' adt-row--expanded' : '' }}" data-row-id="{{ $key }}"
+                            @if ($inline) x-bind:class="{ 'adt-row--expanded': open }" @endif>
+                            @if ($expandable)
                                 <td class="adt-expand-cell">
-                                    @if ($responsive === 'collapse')
+                                    @if ($inline)
                                         <button type="button" class="adt-expand" aria-label="{{ $this->tableText('details', ['name' => $name]) }}"
-                                            aria-expanded="false" aria-controls="{{ $detailId }}"
-                                            x-on:click="open = ! open" x-bind:aria-expanded="open.toString()">
-                                            <svg class="adt-icon" x-show="! open" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 8v8M8 12h8M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z"/></svg>
-                                            <svg class="adt-icon" x-show="open" style="display: none" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M8 12h8M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z"/></svg>
+                                            aria-expanded="{{ $detailOpen ? 'true' : 'false' }}" aria-controls="{{ $detailId }}"
+                                            x-on:click="open = ! open{{ $detailView !== null ? '; $wire.toggleDetail('.$jsKey.', open)' : '' }}" x-bind:aria-expanded="open.toString()">
+                                            <svg class="adt-icon" x-show="! open" @if ($detailOpen) style="display: none" @endif viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 8v8M8 12h8M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z"/></svg>
+                                            <svg class="adt-icon" x-show="open" @if (! $detailOpen) style="display: none" @endif viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M8 12h8M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z"/></svg>
                                         </button>
                                     @else
                                         <button type="button" class="adt-expand" aria-label="{{ $this->tableText('details', ['name' => $name]) }}" aria-haspopup="dialog"
-                                            x-on:click="$el.nextElementSibling.showModal()">
+                                            x-on:click="$el.nextElementSibling.showModal(){{ $detailView !== null ? '; $wire.toggleDetail('.$jsKey.', true)' : '' }}">
                                             <svg class="adt-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 8v8M8 12h8M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z"/></svg>
                                         </button>
                                         {{-- wire:ignore.self keeps it open while Livewire updates its content. --}}
                                         <dialog class="adt-dialog" aria-labelledby="{{ $detailId }}-title" wire:ignore.self
-                                            x-on:click="$event.target === $el && $el.close()" x-on:close="$el.previousElementSibling.focus()">
+                                            x-on:click="$event.target === $el && $el.close()" x-on:close="$el.previousElementSibling.focus(){{ $detailView !== null ? '; $wire.toggleDetail('.$jsKey.', false)' : '' }}">
                                             <div class="adt-dialog-head">
                                                 <h2 class="adt-dialog-title" id="{{ $detailId }}-title">{{ $this->tableText('details', ['name' => $name]) }}</h2>
                                                 <button type="button" class="adt-dialog-close" aria-label="{{ $this->tableText('close') }}" x-on:click="$el.closest('dialog').close()">
@@ -153,6 +158,9 @@
                                                 </button>
                                             </div>
                                             @include('acun-datatable::livewire.details', ['all' => true])
+                                            @if ($detailView !== null)
+                                                @include('acun-datatable::livewire.detail-content')
+                                            @endif
                                         </dialog>
                                     @endif
                                 </td>
@@ -176,9 +184,16 @@
                                 </td>
                             @endif
                         </tr>
-                        @if ($responsive === 'collapse')
-                            <tr class="adt-detail" id="{{ $detailId }}" x-show="open" style="display: none">
-                                <td colspan="{{ $span }}">@include('acun-datatable::livewire.details', ['all' => false])</td>
+                        @if ($inline)
+                            <tr class="adt-detail" id="{{ $detailId }}" x-show="open" @if (! $detailOpen) style="display: none" @endif>
+                                <td colspan="{{ $span }}">
+                                    @if ($responsive === 'collapse')
+                                        @include('acun-datatable::livewire.details', ['all' => false])
+                                    @endif
+                                    @if ($detailView !== null)
+                                        @include('acun-datatable::livewire.detail-content')
+                                    @endif
+                                </td>
                             </tr>
                         @endif
                     </tbody>
@@ -194,7 +209,7 @@
                     {{-- Footer totals over every matching row (shown while the row count is exact). --}}
                     <tfoot>
                         <tr class="adt-total">
-                            @if ($collapsible)<td class="adt-expand-cell"></td>@endif
+                            @if ($expandable)<td class="adt-expand-cell"></td>@endif
                             @if ($selectable)<td class="adt-select"></td>@endif
                             @foreach ($columns as $index => $column)
                                 @php
