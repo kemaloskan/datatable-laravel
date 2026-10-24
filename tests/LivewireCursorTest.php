@@ -53,4 +53,22 @@ final class LivewireCursorTest extends TestCase
         self::assertSame(1, $table->instance()->rows->currentPage());
         self::assertSame([2], array_keys($table->get('cursors')));
     }
+
+    public function test_a_sort_set_directly_starts_again_from_page_one(): void
+    {
+        $table = Livewire::test(CursorOrdersTable::class)->call('sortBy', 'total');
+        $table->call('setPage', 2);
+        self::assertNotSame([], $table->get('cursors'));
+        $table->set('sort', 'customer:asc'); // wire:model or $wire.set, not sortBy()
+        self::assertSame(Order::query()->orderBy('customer')->orderBy('id')->limit(2)->pluck('id')->all(), $this->ids($table));
+        $table->assertSet('paginators.page', 1);
+    }
+
+    public function test_a_huge_selection_set_from_the_browser_is_trimmed_once(): void
+    {
+        $started = microtime(true);
+        $table = Livewire::test(CursorOrdersTable::class)->set('selected', array_map('strval', range(1, 20_000)));
+        self::assertLessThan(2.0, microtime(true) - $started);
+        self::assertCount(1000, $table->get('selected')); // maxSelected()
+    }
 }

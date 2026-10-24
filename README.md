@@ -400,11 +400,15 @@ protected function bulkActions(): array
 An export past `exportLimit()` (or a `queued()` bulk action) goes to a job,
 `RunTableTask`, and the table says so while you keep working. The job
 rebuilds the table from its state (search, filters, sorting, selection) **as
-the user who started it**, so `query()` and policies see the same user. When
-the file is ready the table shows "Download": a signed link valid for an
-hour, only for that user, and the file is deleted once sent. A failure shows
-a generic message (the details go to your log). Run a queue worker, and
-schedule `php artisan acun-datatable:prune` daily for files nobody downloaded.
+the user who started it**, so `query()` and policies see the same user (and
+the worker forgets that user afterwards). When the file is ready the table
+shows "Download": a signed link valid for an hour, only for that user (a
+guest's task belongs to the guest's session), and the file is deleted once
+sent. A table runs one task at a time, and one visitor may start
+`queuedTaskLimit()` tasks (10) per 10 minutes. Tasks belong to the request's
+auth guard; `taskGuard()` names another. A failure shows a generic message
+(the details go to your log). Run a queue worker, and schedule
+`php artisan acun-datatable:prune` daily for files nobody downloaded.
 
 ```php
 use Acunsoft\DataTable\Laravel\Livewire\WithTableImport;
@@ -579,8 +583,12 @@ What the package does for you:
   index: the first sort column is bounded before the exact comparison
   (Laravel's own `cursorPaginate()` writes it as a plain `OR`, which
   PostgreSQL scans for 3.9 s). Pages are reached one after another: the pager
-  offers those seen so far and the next one. Sort columns should not hold
-  `NULL`s; a cursor made for another sort is refused (422).
+  offers those seen so far and the next one. Mark sort columns that may hold
+  `NULL` with `Column::nullable()`, so later pages also reach the `NULL` rows
+  (in the database's own order). A query builder (not Eloquent) gets the key
+  (`keyName()`, default `id`) as the last sort rule. A cursor made for another
+  sort is refused (422) on the JSON endpoint; in Livewire the table starts
+  again from page 1.
 - **Index-friendly dates.** A day is a range `[00:00, next day 00:00)` on the
   bare column, never `DATE(column)`, so the column's index is used.
 - **Index-friendly sorting.** The primary-key tie-breaker follows the last

@@ -61,6 +61,8 @@ return [
     'task_bulk_running' => 'İşlem arka planda yapılıyor…',
     'task_bulk_done' => 'İşlem tamamlandı.',
     'task_failed' => 'İşlem tamamlanamadı.',
+    'task_busy' => 'Bu tablonun bir görevi hâlâ çalışıyor; bitmesini bekleyin.',
+    'task_limit' => 'Çok fazla arka plan görevi; birkaç dakika sonra yeniden deneyin.',
     'export' => 'Dışa aktar',
     'export_xlsx' => 'Excel (.xlsx)',
     'export_csv' => 'CSV',

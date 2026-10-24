@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Acunsoft\DataTable\Laravel\Http;
 
 use Acunsoft\DataTable\Laravel\Support\TableTasks;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -19,7 +18,7 @@ final class DownloadTaskFile
     {
         $state = TableTasks::get($id);
         abort_if($state === null || ($state['status'] ?? null) !== 'ready' || ! isset($state['disk'], $state['path']), 404);
-        abort_unless(TableTasks::belongsTo($state, Auth::guard($state['guard'] ?? null)->id()), 403);
+        abort_unless(TableTasks::belongsTo($state), 403);
         $disk = Storage::disk($state['disk']);
         abort_unless($disk->exists($state['path']), 410);
         $response = $disk->download($state['path'], $state['name'] ?? basename($state['path']), ['X-Content-Type-Options' => 'nosniff']);

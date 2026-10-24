@@ -61,6 +61,8 @@ return [
     'task_bulk_running' => 'Die Aktion läuft im Hintergrund…',
     'task_bulk_done' => 'Die Aktion ist abgeschlossen.',
     'task_failed' => 'Die Aufgabe konnte nicht abgeschlossen werden.',
+    'task_busy' => 'Eine Aufgabe dieser Tabelle läuft noch; warten Sie, bis sie fertig ist.',
+    'task_limit' => 'Zu viele Hintergrundaufgaben; versuchen Sie es in einigen Minuten erneut.',
     'export' => 'Exportieren',
     'export_xlsx' => 'Excel (.xlsx)',
     'export_csv' => 'CSV',

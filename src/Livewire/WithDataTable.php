@@ -427,8 +427,19 @@ trait WithDataTable
     public function rows(): LengthAwarePaginator
     {
         $query = $this->dataTableQuery();
-        $page = fn () => QueryApplier::paginate($this->query(), $this->dataTableQuery(), $this->dataTableColumns(), $this->countLimit(), $this->maxResultWindow(), $this->countTimeout());
-        $rows = $page();
+        $page = fn () => QueryApplier::paginate($this->query(), $this->dataTableQuery(), $this->dataTableColumns(), $this->countLimit(), $this->maxResultWindow(), $this->countTimeout(), $this->keyName());
+        try {
+            $rows = $page();
+        } catch (InvalidTableQuery $error) {
+            if (! $query->cursorPaging || ! isset($error->errors['cursor'])) {
+                throw $error;
+            }
+            // A cursor of another sort or rows (changed from outside): start again on page 1.
+            $this->cursors = [];
+            $this->setPage(1);
+            $query = $this->dataTableQuery();
+            $rows = $page();
+        }
         if ($query->cursorPaging) {
             // Remember the cursors up to this page and the one that opens the next.
             $known = array_filter($this->cursors, fn ($cursor, $number) => is_int($number) && $number <= $query->page, ARRAY_FILTER_USE_BOTH);
@@ -832,6 +843,11 @@ trait WithDataTable
         if (! $row instanceof \Illuminate\Database\Eloquent\Model) {
             throw new \LogicException('Override saveCell() to save edits of query-builder rows.');
         }
+        $qualified = $column->databaseColumn();
+        if (str_contains($qualified, '.') && ! str_starts_with($qualified, $row->getTable().'.')) {
+            // customers.name on an Order row is another table's column: never written to the order.
+            throw new \LogicException("Override saveCell() to save [{$qualified}]: it is not a column of [{$row->getTable()}].");
+        }
         $row->setAttribute($column->attributeName(), $value);
         $row->save();
     }
@@ -887,10 +903,7 @@ trait WithDataTable
     /** @return list<string> */
     private function openDetailKeys(): array
     {
-        return array_values(array_unique(array_map('strval', array_filter(
-            $this->openDetails,
-            fn ($key) => (is_string($key) || is_int($key)) && strlen((string) $key) <= 64,
-        ))));
+        return self::distinctKeys($this->openDetails, 100);
     }
 
     // Selection ------------------------------------------------------------
@@ -1087,17 +1100,55 @@ trait WithDataTable
         return 'local';
     }
 
-    /** Start a queued task as the current user, with this table's state. */
-    protected function queueTableTask(string $task, string $argument): void
+    /**
+     * The auth guard queued tasks run as and belong to. Default: the
+     * request's guard (`auth:admin` routes use `admin`).
+     */
+    protected function taskGuard(): ?string
     {
+        return null;
+    }
+
+    /** Queued tasks one visitor may start per 10 minutes. Default 10. */
+    protected function queuedTaskLimit(): int
+    {
+        return 10;
+    }
+
+    /**
+     * Start a queued task as the current user (or a guest's session), with
+     * this table's state. One task at a time per table, within
+     * `queuedTaskLimit()`; returns false (with an error) otherwise.
+     */
+    protected function queueTableTask(string $task, string $argument): bool
+    {
+        $current = $this->tableTask === null ? null : TableTasks::get($this->tableTask);
+        if ($current !== null && in_array($current['status'] ?? null, ['queued', 'running'], true) && TableTasks::belongsTo($current)) {
+            $this->addError('tableTask', $this->tableText('task_busy'));
+
+            return false;
+        }
+        $guard = $this->taskGuard() ?? \Illuminate\Support\Facades\Auth::getDefaultDriver();
+        $owner = TableTasks::owner($guard);
+        if ($owner === null) {
+            throw new \RuntimeException('Queued table tasks need a signed-in user or a session.');
+        }
+        $limiter = 'acun-datatable:tasks:'.hash('sha256', $owner);
+        if (\Illuminate\Support\Facades\RateLimiter::tooManyAttempts($limiter, $this->queuedTaskLimit())) {
+            $this->addError('tableTask', $this->tableText('task_limit'));
+
+            return false;
+        }
+        \Illuminate\Support\Facades\RateLimiter::hit($limiter, 600);
         $id = (string) \Illuminate\Support\Str::uuid();
-        $guard = \Illuminate\Support\Facades\Auth::getDefaultDriver();
         $user = \Illuminate\Support\Facades\Auth::guard($guard)->id();
-        TableTasks::put($id, ['status' => 'queued', 'task' => $task, 'user' => $user, 'guard' => $guard]);
+        TableTasks::put($id, ['status' => 'queued', 'task' => $task, 'user' => $user, 'guard' => $guard, 'owner' => $owner]);
         $state = array_filter($this->all(), fn ($value) => $value === null || is_scalar($value) || is_array($value));
         unset($state['tableTask']);
         $this->tableTask = $id;
         dispatch(new \Acunsoft\DataTable\Laravel\Jobs\RunTableTask(static::class, $state, $task, $argument, $id, $user, $guard, app()->getLocale()));
+
+        return true;
     }
 
     /**
@@ -1139,7 +1190,7 @@ trait WithDataTable
     public function checkTableTask(): void
     {
         $state = $this->tableTask === null ? null : TableTasks::get($this->tableTask);
-        if ($state === null || ! TableTasks::belongsTo($state, \Illuminate\Support\Facades\Auth::guard($state['guard'] ?? null)->id())) {
+        if ($state === null || ! TableTasks::belongsTo($state)) {
             $this->tableTask = null;
 
             return;
@@ -1208,8 +1259,9 @@ trait WithDataTable
             return null;
         }
         if ($found->isQueued()) {
-            $this->queueTableTask('bulk', $found->id());
-            $this->clearSelection();
+            if ($this->queueTableTask('bulk', $found->id())) {
+                $this->clearSelection();
+            }
 
             return null;
         }
@@ -1375,6 +1427,12 @@ trait WithDataTable
         return $layout;
     }
 
+    private function sortChanged(): void
+    {
+        $this->cursors = [];
+        $this->resetPage();
+    }
+
     protected function tableChanged(): void
     {
         $this->cursors = []; // other rows: the cursors no longer apply
@@ -1418,14 +1476,40 @@ trait WithDataTable
     /** @return list<string> */
     private function selectedKeys(): array
     {
+        return self::distinctKeys($this->selected, $this->maxSelected());
+    }
+
+    /**
+     * The first `$max` distinct keys of a list the browser may have set: one pass with a
+     * keyed set, stopping at the limit, so a huge list costs no more than `$max` keys.
+     *
+     * @param  array<mixed>  $values
+     * @return list<string>
+     */
+    private static function distinctKeys(array $values, int $max): array
+    {
         $keys = [];
-        foreach ($this->selected as $key) {
-            if ((is_string($key) || is_int($key)) && strlen((string) $key) <= 64 && ! in_array((string) $key, $keys, true)) {
-                $keys[] = (string) $key;
+        foreach ($values as $key) {
+            if (count($keys) >= $max) {
+                break;
+            }
+            if ((is_string($key) || is_int($key)) && strlen((string) $key) <= 64) {
+                $keys[(string) $key] = true;
             }
         }
 
-        return array_slice($keys, 0, $this->maxSelected());
+        return array_map('strval', array_keys($keys));
+    }
+
+    /** Lists the browser may set are trimmed once, when set, not on every read. */
+    public function updatedWithDataTable(string $name): void
+    {
+        match (explode('.', $name)[0]) {
+            'selected' => $this->selected = $this->selectedKeys(),
+            'openDetails' => $this->openDetails = $this->openDetailKeys(),
+            'sort' => $this->sortChanged(), // set directly (wire:model, $wire.set), as sortBy() does
+            default => null,
+        };
     }
 
     /** @return list<string> */

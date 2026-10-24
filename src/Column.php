@@ -22,6 +22,7 @@ final class Column
     private string $header;
     private ?string $type = null;
     private bool $sortable = false;
+    private bool $nullable = false;
     private bool $filterable = false;
     private ?bool $searchable = null;
     private ?string $searchColumn = null;
@@ -77,6 +78,16 @@ final class Column
     public function sortable(bool $sortable = true): self
     {
         return $this->with('sortable', $sortable);
+    }
+
+    /**
+     * The column may hold NULL: cursor paging then also reaches the NULL rows,
+     * in the database's own order (PostgreSQL: last when ascending; MySQL,
+     * MariaDB, SQLite, SQL Server: first).
+     */
+    public function nullable(bool $nullable = true): self
+    {
+        return $this->with('nullable', $nullable);
     }
 
     /** Filterable columns are also searchable unless `searchable(false)` says otherwise. */
@@ -254,6 +265,7 @@ final class Column
     public function headerText(): string { return $this->header; }
     public function valueType(): ?string { return $this->type; }
     public function isSortable(): bool { return $this->sortable; }
+    public function isNullable(): bool { return $this->nullable; }
     public function isFilterable(): bool { return $this->filterable; }
     public function isSearchable(): bool { return $this->searchable ?? $this->filterable; }
     public function foldedColumn(): ?string { return $this->searchColumn; }

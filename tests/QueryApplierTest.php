@@ -173,5 +173,44 @@ final class QueryApplierTest extends TestCase
         $plain = QueryApplier::apply(Order::query()->orderByDesc('total'), TableQuery::fromArray([]), $columns);
         self::assertSame(['total', 'orders.id'], array_column($plain->getQuery()->orders, 'column')); // no sort: the written order stays first
     }
-}
 
+    public function test_cursor_paging_reaches_every_row_when_a_sort_column_holds_null(): void
+    {
+        $columns = [Column::make('created')->column('created_at')->type('datetime')->sortable()->nullable(), Column::make('active')->type('boolean')->sortable()];
+        foreach (['created:asc', 'created:desc', 'active:asc,created:desc'] as $sort) {
+            $seen = [];
+            $cursor = null;
+            for ($page = 1; $page < 10; $page++) {
+                $query = TableQuery::fromArray(['sort' => $sort, 'pageSize' => 2, 'paging' => 'cursor', 'page' => $page] + ($cursor === null ? [] : ['cursor' => $cursor]));
+                $result = QueryApplier::cursorPage(Order::query(), $query, $columns);
+                $seen = [...$seen, ...array_map(fn ($order) => $order->id, $result->items())];
+                $cursor = $result->nextCursor();
+                if ($cursor === null) {
+                    break;
+                }
+            }
+            $expected = Order::query()->orderByRaw(match ($sort) {
+                'created:asc' => 'created_at ASC, id ASC',
+                'created:desc' => 'created_at DESC, id DESC',
+                default => 'active ASC, created_at DESC, id DESC',
+            })->pluck('id')->all();
+            self::assertSame($expected, $seen, $sort);
+        }
+    }
+
+    public function test_cursor_paging_on_a_query_builder_breaks_ties_by_the_key(): void
+    {
+        $columns = [Column::make('active')->type('boolean')->sortable()];
+        $seen = [];
+        $cursor = null;
+        for ($page = 1; $page < 10; $page++) {
+            $query = TableQuery::fromArray(['sort' => 'active:asc', 'pageSize' => 2, 'paging' => 'cursor', 'page' => $page] + ($cursor === null ? [] : ['cursor' => $cursor]));
+            $result = QueryApplier::cursorPage(DB::table('orders')->select('id', 'active'), $query, $columns);
+            $seen = [...$seen, ...array_map(fn ($row) => $row->id, $result->items())];
+            if (($cursor = $result->nextCursor()) === null) {
+                break;
+            }
+        }
+        self::assertSame([2, 4, 1, 3, 5], $seen); // every row once: inactive first, then by id
+    }
+}

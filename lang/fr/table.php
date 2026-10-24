@@ -61,6 +61,8 @@ return [
     'task_bulk_running' => 'L’action s’exécute en arrière-plan…',
     'task_bulk_done' => 'L’action est terminée.',
     'task_failed' => 'La tâche n’a pas pu aboutir.',
+    'task_busy' => 'Une tâche de ce tableau est encore en cours ; attendez qu\'elle se termine.',
+    'task_limit' => 'Trop de tâches en arrière-plan ; réessayez dans quelques minutes.',
     'export' => 'Exporter',
     'export_xlsx' => 'Excel (.xlsx)',
     'export_csv' => 'CSV',

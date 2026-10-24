@@ -60,9 +60,16 @@ final class TableQuery
      */
     public static function fromDataTables(array $input, int $maxPageSize = 100, int $defaultPageSize = 25): self
     {
+        // A column without data (`data: null`, e.g. an actions column) is no column of the query:
+        // ordering by it is ignored, as is its search.
         $columns = [];
         foreach (is_array($input['columns'] ?? null) ? array_values($input['columns']) : [] as $index => $column) {
-            $field = is_array($column) ? ($column['data'] ?? $column['name'] ?? null) : null;
+            $field = is_array($column) ? (($column['data'] ?? '') !== '' ? $column['data'] : ($column['name'] ?? null)) : null;
+            if ($field === null || $field === '') {
+                $columns[$index] = null;
+
+                continue;
+            }
             if (! is_string($field) || preg_match('/^[A-Za-z][A-Za-z0-9_.-]{0,63}$/', $field) !== 1) {
                 throw InvalidTableQuery::at("columns.{$index}.data", 'columns[].data must be a column ID.');
             }
@@ -76,13 +83,16 @@ final class TableQuery
         foreach (is_array($input['order'] ?? null) ? array_values($input['order']) : [] as $index => $rule) {
             $column = is_array($rule) ? ($rule['column'] ?? null) : null;
             $column = is_string($column) && ctype_digit($column) ? (int) $column : $column;
-            if (! is_int($column) || ! isset($columns[$column])) {
+            if (! is_int($column) || ! array_key_exists($column, $columns)) {
                 throw InvalidTableQuery::at("order.{$index}.column", 'order[].column must be the index of a column.');
+            }
+            if ($columns[$column] === null) {
+                continue;
             }
             $sort[$columns[$column]['field']] = $columns[$column]['field'].':'.(($rule['dir'] ?? 'asc') === 'desc' ? 'desc' : 'asc');
         }
         $filters = is_array($input['filters'] ?? null) ? array_values($input['filters']) : [];
-        foreach ($columns as $column) {
+        foreach (array_filter($columns) as $column) {
             if (is_string($column['search']) && trim($column['search']) !== '') {
                 $filters[] = ['field' => $column['field'], 'op' => 'contains', 'value' => $column['search']];
             }

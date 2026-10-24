@@ -21,3 +21,4 @@
         @endunless
     </div>
 @endif
+@error('tableTask') <p class="adt-field-error" role="alert">{{ $message }}</p> @enderror

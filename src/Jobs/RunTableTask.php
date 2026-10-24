@@ -46,14 +46,18 @@ final class RunTableTask implements ShouldQueue
     {
         app()->setLocale($this->locale);
         TableTasks::put($this->id, ['status' => 'running']);
+        // A worker runs many jobs in one process: whoever this job acts as is undone afterwards.
+        $guard = Auth::guard($this->guard);
+        $previous = method_exists($guard, 'hasUser') && $guard->hasUser() ? $guard->user() : null;
         try {
             if ($this->user !== null) {
-                $guard = Auth::guard($this->guard);
                 $model = method_exists($guard, 'getProvider') ? $guard->getProvider()->retrieveById($this->user) : null;
                 if ($model === null) {
                     throw new \RuntimeException('The user who started the task no longer exists.');
                 }
                 $guard->setUser($model);
+            } elseif (method_exists($guard, 'forgetUser')) {
+                $guard->forgetUser(); // a guest's task runs as a guest
             }
             $component = app($this->component);
             foreach ($this->state as $name => $value) {
@@ -69,6 +73,12 @@ final class RunTableTask implements ShouldQueue
         } catch (Throwable $error) {
             TableTasks::put($this->id, ['status' => 'failed', 'message' => $error->getMessage()]);
             report($error);
+        } finally {
+            if ($previous !== null) {
+                $guard->setUser($previous);
+            } elseif (method_exists($guard, 'forgetUser')) {
+                $guard->forgetUser();
+            }
         }
     }
 }

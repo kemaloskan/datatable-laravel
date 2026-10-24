@@ -134,6 +134,14 @@ final class TableResponseTest extends TestCase
         $params['columns'][0]['search']['value'] = '';
         $params['length'] = '-1'; // "all": the largest page allowed
         self::assertCount(3, $this->getJson('/orders/data?'.http_build_query($params))->json('data'));
+
+        // An actions column (`data: null`) sends empty data; DataTables' default order is on column 0.
+        array_unshift($params['columns'], ['data' => '', 'name' => '', 'searchable' => 'false', 'orderable' => 'false', 'search' => ['value' => 'x', 'regex' => 'false']]);
+        $params['order'] = [['column' => '0', 'dir' => 'asc'], ['column' => '2', 'dir' => 'desc']];
+        $params['length'] = '10';
+        $body = $this->getJson('/orders/data?'.http_build_query($params))->assertOk()->json();
+        self::assertArrayNotHasKey('error', $body);
+        self::assertSame(Order::query()->orderByDesc('total')->orderByDesc('id')->take(3)->pluck('id')->all(), array_column($body['data'], 'id')); // the endpoint's largest page: 3
     }
 }
 

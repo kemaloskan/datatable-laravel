@@ -68,4 +68,25 @@ final class PostgresCountTest extends TestCase
             self::assertSame('0', (string) $pg->selectOne("select current_setting('statement_timeout') as value")->value);
         });
     }
+
+    public function test_cursor_paging_follows_postgresqls_null_order(): void
+    {
+        $pg = DB::connection('pg');
+        $pg->statement('create temporary table adt_cursor_test (id int primary key, score int)');
+        $pg->statement('insert into adt_cursor_test select n, case when n % 3 = 0 then null else n % 5 end from generate_series(1, 20) as n');
+        $columns = [\Acunsoft\DataTable\Laravel\Column::make('score')->type('number')->sortable()->nullable()];
+        foreach (['asc', 'desc'] as $direction) {
+            $seen = [];
+            $cursor = null;
+            for ($page = 1; $page < 20; $page++) {
+                $query = \Acunsoft\DataTable\Laravel\TableQuery::fromArray(['sort' => "score:{$direction}", 'pageSize' => 3, 'paging' => 'cursor', 'page' => $page] + ($cursor === null ? [] : ['cursor' => $cursor]));
+                $result = QueryApplier::cursorPage($pg->table('adt_cursor_test'), $query, $columns);
+                $seen = [...$seen, ...array_map(fn ($row) => $row->id, $result->items())];
+                if (($cursor = $result->nextCursor()) === null) {
+                    break;
+                }
+            }
+            self::assertSame($pg->table('adt_cursor_test')->orderBy('score', $direction)->orderBy('id', $direction)->pluck('id')->all(), $seen, $direction);
+        }
+    }
 }

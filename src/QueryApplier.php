@@ -138,15 +138,33 @@ final class QueryApplier
      * 5,000,000 PostgreSQL rows). The condition is index-friendly on every
      * database: the first sort column is bounded (`a <= x`) before the exact
      * lexicographic test, which plain `a < x OR (a = x AND …)` is not on
-     * PostgreSQL. No result window applies. Sort columns should not hold
-     * NULLs (a limit of keyset paging). The total is counted as in page mode.
+     * PostgreSQL. No result window applies. Mark sort columns that may hold
+     * NULL with `Column::nullable()`; a NULL in the cursor is handled either
+     * way. A query builder (not Eloquent) gets `$key` (default `id`) as the
+     * last sort rule, so rows with equal values are never skipped. The total
+     * is counted as in page mode.
      *
      * @param iterable<Column> $columns
      */
-    public static function cursorPage(EloquentBuilder|QueryBuilder $builder, TableQuery $query, iterable $columns, ?int $countLimit = 10_000, ?int $countTimeout = 250): TablePage
+    public static function cursorPage(EloquentBuilder|QueryBuilder $builder, TableQuery $query, iterable $columns, ?int $countLimit = 10_000, ?int $countTimeout = 250, ?string $key = null): TablePage
     {
         $applied = self::apply($builder, $query, $columns);
         $base = $applied instanceof EloquentBuilder ? $applied->getQuery() : $applied;
+        if (! $applied instanceof EloquentBuilder) {
+            $key ??= 'id';
+            $table = is_string($base->from) ? $base->from : null;
+            $sorted = array_map(fn (array $order) => $order['column'] ?? null, $base->orders ?? []);
+            if (! in_array($key, $sorted, true) && ($table === null || ! in_array("{$table}.{$key}", $sorted, true))) {
+                $last = $base->orders === null || $base->orders === [] ? 'asc' : strtolower((string) ($base->orders[array_key_last($base->orders)]['direction'] ?? 'asc'));
+                $base->orderBy($key, $last === 'desc' ? 'desc' : 'asc');
+            }
+        }
+        $nullable = [];
+        foreach ($columns as $column) {
+            if ($column->isNullable()) {
+                $nullable[$column->databaseColumn()] = true;
+            }
+        }
         $orders = [];
         foreach ($base->orders ?? [] as $order) {
             if (! isset($order['column']) || ! is_string($order['column'])) {
@@ -161,7 +179,7 @@ final class QueryApplier
         [$total, $exact] = self::count($applied, $countLimit, $countTimeout);
         $page = clone $applied;
         if ($query->cursor !== null) {
-            self::after($page, $orders, self::cursorValues($query->cursor, $signature, count($orders)));
+            self::after($page, $orders, self::cursorValues($query->cursor, $signature, count($orders)), $nullable, $base->getConnection()->getDriverName() === 'pgsql');
         }
         $items = $page->limit($query->pageSize + 1)->get();
         $more = count($items) > $query->pageSize;
@@ -178,21 +196,42 @@ final class QueryApplier
 
     /**
      * Rows after `$values` in the order of `$orders`: `a ≤ x AND (a < x OR (a = x AND (b > y OR (b = y AND id > z))))`,
-     * with each comparison turned by its direction.
+     * with each comparison turned by its direction. NULL sorts where the database puts it (the
+     * ORDER BY stays plain, so indexes serve it): the largest value on PostgreSQL, the smallest
+     * elsewhere.
      *
      * @param list<array{column: string, direction: string}> $orders
      * @param list<mixed> $values
+     * @param array<string, true> $nullable
      */
-    private static function after(EloquentBuilder|QueryBuilder $builder, array $orders, array $values): void
+    private static function after(EloquentBuilder|QueryBuilder $builder, array $orders, array $values, array $nullable = [], bool $nullsLargest = false): void
     {
-        $first = $orders[0];
-        $builder->where($first['column'], $first['direction'] === 'desc' ? '<=' : '>=', $values[0]);
-        $nest = function ($where, int $index) use (&$nest, $orders, $values): void {
+        // The rows past `$values[$index]` in its column ($orEqual: and those equal to it).
+        $beyond = function ($where, int $index, bool $orEqual) use ($orders, $values, $nullable, $nullsLargest): void {
             $order = $orders[$index];
-            $where->where($order['column'], $order['direction'] === 'desc' ? '<' : '>', $values[$index]);
+            $column = $order['column'];
+            $value = $values[$index];
+            $nullsFirst = ($order['direction'] === 'asc') !== $nullsLargest;
+            if ($value === null) {
+                // Past the NULLs when they come first; among the NULLs (or nothing) when they come last.
+                $nullsFirst ? ($orEqual ? null : $where->whereNotNull($column)) : ($orEqual ? $where->whereNull($column) : $where->whereRaw('1 = 0'));
+
+                return;
+            }
+            $operator = ($order['direction'] === 'desc' ? '<' : '>').($orEqual ? '=' : '');
+            if (isset($nullable[$column]) && ! $nullsFirst) {
+                $where->where(fn ($either) => $either->where($column, $operator, $value)->orWhereNull($column));
+            } else {
+                $where->where($column, $operator, $value);
+            }
+        };
+        $builder->where(fn ($where) => $beyond($where, 0, true));
+        $nest = function ($where, int $index) use (&$nest, $beyond, $orders, $values): void {
+            $where->where(fn ($strict) => $beyond($strict, $index, false));
             if ($index + 1 < count($orders)) {
-                $where->orWhere(function ($equal) use (&$nest, $order, $values, $index): void {
-                    $equal->where($order['column'], '=', $values[$index])->where(fn ($rest) => $nest($rest, $index + 1));
+                $where->orWhere(function ($equal) use (&$nest, $orders, $values, $index): void {
+                    $values[$index] === null ? $equal->whereNull($orders[$index]['column']) : $equal->where($orders[$index]['column'], '=', $values[$index]);
+                    $equal->where(fn ($rest) => $nest($rest, $index + 1));
                 });
             }
         };
@@ -224,10 +263,10 @@ final class QueryApplier
         return $value instanceof \DateTimeInterface ? $value->format('Y-m-d H:i:s') : $value;
     }
 
-    public static function paginate(EloquentBuilder|QueryBuilder $builder, TableQuery $query, iterable $columns, ?int $countLimit = 10_000, ?int $maxResultWindow = 100_000, ?int $countTimeout = 250): TablePage
+    public static function paginate(EloquentBuilder|QueryBuilder $builder, TableQuery $query, iterable $columns, ?int $countLimit = 10_000, ?int $maxResultWindow = 100_000, ?int $countTimeout = 250, ?string $key = null): TablePage
     {
         if ($query->cursorPaging) {
-            return self::cursorPage($builder, $query, $columns, $countLimit, $countTimeout);
+            return self::cursorPage($builder, $query, $columns, $countLimit, $countTimeout, $key);
         }
         $offset = ($query->page - 1) * $query->pageSize;
         if ($maxResultWindow !== null && $offset >= $maxResultWindow) {

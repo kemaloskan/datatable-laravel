@@ -92,4 +92,15 @@ final class DenyUpdates
     {
         return false;
     }
+
+    public function test_a_column_of_another_table_is_never_written_to_the_row(): void
+    {
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage('it is not a column of [orders]');
+        try {
+            Livewire::test(\Acunsoft\DataTable\Laravel\Tests\Fixtures\JoinedEditOrdersTable::class)->call('updateCell', '1', 'name', 'X');
+        } finally {
+            self::assertNull(Order::query()->find(1)->getAttribute('name'));
+        }
+    }
 }
