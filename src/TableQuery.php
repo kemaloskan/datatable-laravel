@@ -34,6 +34,10 @@ final class TableQuery
         public readonly array $sorting,
         public readonly array $filters,
         public readonly string $search,
+        /** Keyset paging (`paging=cursor`): pages continue after the last row, with no OFFSET. */
+        public readonly bool $cursorPaging = false,
+        /** The `nextCursor` of the page before; null for the first page. */
+        public readonly ?string $cursor = null,
     ) {
     }
 
@@ -66,7 +70,21 @@ final class TableQuery
             self::sorting($input['sort'] ?? ''),
             self::filters($input['filters'] ?? []),
             self::search($input['search'] ?? ''),
+            ($input['paging'] ?? null) === 'cursor' || isset($input['cursor']),
+            self::cursor($input['cursor'] ?? null),
         );
+    }
+
+    private static function cursor(mixed $value): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+        if (! is_string($value) || strlen($value) > 4096 || preg_match('/^[A-Za-z0-9_\-=]+$/', $value) !== 1) {
+            throw InvalidTableQuery::at('cursor', 'cursor must be the nextCursor of a previous page.');
+        }
+
+        return $value;
     }
 
     /** @return list<string> */

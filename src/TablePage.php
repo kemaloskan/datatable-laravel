@@ -17,9 +17,15 @@ use Illuminate\Pagination\LengthAwarePaginator;
 final class TablePage extends LengthAwarePaginator
 {
     /** @param iterable<mixed> $items */
-    public function __construct(iterable $items, int $total, int $perPage, int $currentPage, private readonly bool $exact, private readonly bool $more)
+    public function __construct(iterable $items, int $total, int $perPage, int $currentPage, private readonly bool $exact, private readonly bool $more, private readonly ?string $nextCursor = null)
     {
         parent::__construct($items, $total, $perPage, $currentPage, ['pageName' => 'page', 'path' => \Illuminate\Pagination\Paginator::resolveCurrentPath()]);
+    }
+
+    /** Cursor paging: where the next page starts (null on the last page or in page mode). */
+    public function nextCursor(): ?string
+    {
+        return $this->nextCursor;
     }
 
     public function totalIsExact(): bool

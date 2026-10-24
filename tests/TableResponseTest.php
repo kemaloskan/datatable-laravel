@@ -63,4 +63,33 @@ final class TableResponseTest extends TestCase
         $this->getJson('/orders/custom?pageSize=1&sort=customer:asc')->assertOk()
             ->assertExactJson(['rows' => [['name' => 'ALI KAYA']], 'totalRows' => 5]);
     }
+
+    public function test_cursor_paging_walks_every_row_once_in_order(): void
+    {
+        $byOffset = [];
+        for ($page = 1; $page <= 3; $page++) {
+            $byOffset = [...$byOffset, ...array_column($this->getJson("/orders/data?sort=total:desc&pageSize=2&page={$page}")->json('rows'), 'id')];
+        }
+        $byCursor = [];
+        $cursor = null;
+        $page = 1;
+        do {
+            $body = $this->getJson('/orders/data?sort=total:desc&pageSize=2&paging=cursor&page='.$page.($cursor ? '&cursor='.$cursor : ''))->assertOk()->json();
+            $byCursor = [...$byCursor, ...array_column($body['rows'], 'id')];
+            self::assertSame(count($byOffset), $body['totalRows']); // still counted
+            $cursor = $body['nextCursor'] ?? null;
+            $page++;
+        } while ($cursor !== null && $page < 20);
+        self::assertSame($byOffset, $byCursor);
+        self::assertSame(count(array_unique($byCursor)), count($byCursor));
+    }
+
+    public function test_a_bad_cursor_is_refused(): void
+    {
+        $this->getJson('/orders/data?paging=cursor&cursor=not%20base64')->assertStatus(422)->assertJsonStructure(['errors' => ['cursor']]);
+        $this->getJson('/orders/data?paging=cursor&cursor=bm9wZQ')->assertStatus(422)->assertJsonStructure(['errors' => ['cursor']]);
+        $first = $this->getJson('/orders/data?sort=total:desc&pageSize=2&paging=cursor')->json('nextCursor');
+        $this->getJson('/orders/data?sort=customer:asc&pageSize=2&paging=cursor&cursor='.$first)->assertStatus(422); // made for another sort
+    }
 }
+

@@ -80,6 +80,10 @@ trait WithDataTable
     /** @var array<string, mixed> widths in pixels per column ID (`resizableColumns()`) */
     public array $columnWidths = [];
 
+    /** @var array<int, string> cursor paging: the cursor that opens each page seen so far, by page number */
+    #[Locked]
+    public array $cursors = [];
+
     /** @return iterable<Column> */
     abstract protected function columns(): iterable;
 
@@ -130,6 +134,17 @@ trait WithDataTable
     }
 
     /** Pages start at most this many rows deep (default 100,000; `null`: no limit). */
+    /**
+     * Keyset paging: every page costs what page 2 does, at any depth, and no
+     * result window applies. Pages are reached one after another (the pager
+     * offers those seen so far and the next one). Sort columns should not
+     * hold NULLs.
+     */
+    protected function cursorPaging(): bool
+    {
+        return false;
+    }
+
     protected function maxResultWindow(): ?int
     {
         return 100_000;
@@ -378,6 +393,19 @@ trait WithDataTable
         $query = $this->dataTableQuery();
         $page = fn () => QueryApplier::paginate($this->query(), $this->dataTableQuery(), $this->dataTableColumns(), $this->countLimit(), $this->maxResultWindow(), $this->countTimeout());
         $rows = $page();
+        if ($query->cursorPaging) {
+            // Remember the cursors up to this page and the one that opens the next.
+            $known = array_filter($this->cursors, fn ($cursor, $number) => is_int($number) && $number <= $query->page, ARRAY_FILTER_USE_BOTH);
+            if ($rows->nextCursor() !== null) {
+                $known[$query->page + 1] = $rows->nextCursor();
+            }
+            $this->cursors = $known;
+            if ($query->page !== (int) $this->getPage()) {
+                $this->setPage($query->page);
+            }
+
+            return $rows;
+        }
         if ($rows->isEmpty() && $query->page > 1 && $rows->total() > 0) {
             // The page is past the end (rows were deleted, or the URL was edited): show the last one.
             $this->setPage($rows->totalIsExact() ? $rows->lastPage() : 1);
@@ -602,6 +630,7 @@ trait WithDataTable
         }
         $current = array_slice($current, 0, TableQuery::MAX_SORT_RULES, true);
         $this->sort = implode(',', array_map(fn ($f, $d) => "{$f}:{$d}", array_keys($current), $current));
+        $this->cursors = [];
         $this->resetPage();
     }
 
@@ -679,6 +708,7 @@ trait WithDataTable
 
     public function updatedPageSize(): void
     {
+        $this->cursors = [];
         $this->resetPage();
     }
 
@@ -1100,6 +1130,21 @@ trait WithDataTable
         $page = $this->getPage();
         $page = is_int($page) || (is_string($page) && ctype_digit($page)) ? (int) $page : 1;
 
+        if ($this->cursorPaging()) {
+            // Only pages a known cursor leads to; a page from an edited URL starts over.
+            $page = $page > 1 && is_string($this->cursors[$page] ?? null) ? $page : 1;
+
+            return TableQuery::fromArray([
+                'page' => $page,
+                'pageSize' => $pageSize,
+                'sort' => implode(',', array_slice($sort, 0, TableQuery::MAX_SORT_RULES)),
+                'filters' => $filters,
+                'search' => mb_substr($this->search, 0, TableQuery::MAX_TEXT),
+                'paging' => 'cursor',
+                'cursor' => $page > 1 ? $this->cursors[$page] : null,
+            ], $max, $pageSize);
+        }
+
         return TableQuery::fromArray([
             'page' => min(max($page, 1), TableQuery::MAX_PAGE, $this->maxResultWindow() === null ? TableQuery::MAX_PAGE : max(1, intdiv($this->maxResultWindow() - 1, $pageSize) + 1)),
             'pageSize' => $pageSize,
@@ -1119,6 +1164,21 @@ trait WithDataTable
         $options = $this->pagingOptions() + ['siblings' => 1, 'boundaries' => 1];
         $size = $rows->perPage();
         $page = $rows->currentPage();
+        if ($this->cursorPaging()) {
+            // Only pages a cursor leads to: those seen so far and the next one.
+            $pages = max([$page, 1, ...array_keys($this->cursors)]);
+            $from = $rows->isEmpty() ? 0 : ($page - 1) * $size + 1;
+
+            return [
+                'from' => $from,
+                'to' => $rows->isEmpty() ? 0 : $from + $rows->count() - 1,
+                'items' => PageItems::make($page, $pages, (int) $options['siblings'], (int) $options['boundaries']),
+                'page' => $page,
+                'last' => null,
+                'previous' => $page > 1,
+                'next' => isset($this->cursors[$page + 1]),
+            ];
+        }
         $window = $this->maxResultWindow() === null ? TableQuery::MAX_PAGE : max(1, intdiv($this->maxResultWindow() - 1, $size) + 1);
         // A lower-bound total still proves that its pages exist; past the window none can be opened.
         $pages = max($page, min((int) ceil(max($rows->total(), 1) / $size), $window, TableQuery::MAX_PAGE));
@@ -1155,6 +1215,7 @@ trait WithDataTable
 
     protected function tableChanged(): void
     {
+        $this->cursors = []; // other rows: the cursors no longer apply
         $this->resetPage();
         $this->clearSelection();
     }

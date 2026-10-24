@@ -131,7 +131,9 @@ final class TableResponse implements Responsable
 
         return new JsonResponse(($page->totalIsExact()
             ? ['rows' => $rows, 'totalRows' => $page->total()]
-            : ['rows' => $rows, 'totalRowsAtLeast' => $page->total() + 1]) + ($totals === [] ? [] : ['totals' => $totals]));
+            : ['rows' => $rows, 'totalRowsAtLeast' => $page->total() + 1])
+            + ($page->nextCursor() === null ? [] : ['nextCursor' => $page->nextCursor()])
+            + ($totals === [] ? [] : ['totals' => $totals]));
     }
 
     /** @return array<string, mixed> */

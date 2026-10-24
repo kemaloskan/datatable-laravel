@@ -513,7 +513,7 @@ These defaults keep requests fast; the numbers are medians measured on
 | Search "ayse istanbul" | 3,737 ms | 824.6 ms | 68.2 ms |
 | Search with no match | > 2,413 ms | 2,170 ms | 0.4 ms |
 | Page 2,000 | 136.8 ms | 82.1 ms | 79.6 ms |
-| Page 100,000 | 4,199 ms | refused (result window) | refused |
+| Page 100,000 | 4,199 ms | refused (result window) | refused; cursor paging: 55.5 ms |
 
 "Recommended indexes": a folded copy of each searchable text column with a
 GIN trigram index (step 2 below).
@@ -536,7 +536,20 @@ What the package does for you:
   "10,000+" bound.
 - **Result window.** Pages that start past 100,000 rows are refused (422) or,
   in Livewire, clamped. Deep `OFFSET`s read and throw away millions of rows;
-  sort the other way or filter instead. `maxResultWindow(null)` removes it.
+  sort the other way, filter, or use cursor paging. `maxResultWindow(null)`
+  removes it.
+- **Cursor (keyset) paging.** `cursorPaging()` in Livewire, or
+  `paging=cursor` on the JSON endpoint (the browser packages send it with
+  `paging: 'cursor'` / AcunDataTable `pagination: { cursor: true }`): a page
+  continues after the last row of the page before, by its sort values and
+  key. On 5,000,000 rows page 100,001 takes 55.5 ms with the count, the same
+  as page 2, where the `OFFSET` takes 3,898 ms; no result window applies.
+  The condition is written so every database can use the `(column, id)`
+  index: the first sort column is bounded before the exact comparison
+  (Laravel's own `cursorPaginate()` writes it as a plain `OR`, which
+  PostgreSQL scans for 3.9 s). Pages are reached one after another: the pager
+  offers those seen so far and the next one. Sort columns should not hold
+  `NULL`s; a cursor made for another sort is refused (422).
 - **Index-friendly dates.** A day is a range `[00:00, next day 00:00)` on the
   bare column, never `DATE(column)`, so the column's index is used.
 - **Index-friendly sorting.** The primary-key tie-breaker follows the last
