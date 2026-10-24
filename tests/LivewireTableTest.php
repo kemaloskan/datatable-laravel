@@ -138,6 +138,15 @@ final class LivewireTableTest extends TestCase
         self::assertCount(5, $this->customers($table));
     }
 
+    public function test_shift_click_selects_a_range_of_the_page(): void
+    {
+        $table = Livewire::test(OrdersTable::class); // ordered by id: keys 1..5
+        self::assertStringContainsString('x-data="{ anchor: null }"', $table->html());
+        $table->call('selectRange', '2', '4')->assertSet('selected', ['2', '3', '4']);
+        $table->call('selectRange', '4', '3', false)->assertSet('selected', ['2']);
+        $table->call('selectRange', '1', '99')->assertSet('selected', ['2']); // not on the page: ignored
+    }
+
     public function test_selects_rows_pages_and_every_matching_row(): void
     {
         $table = Livewire::test(OrdersTable::class)->set('pageSize', 2);

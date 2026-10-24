@@ -42,6 +42,20 @@ final class LayoutOrdersTable extends \Livewire\Component
         return ['page_info' => 'Total: :total order, :from to :to|Total: :total orders, :from to :to', 'search_placeholder' => 'Find an order…'];
     }
 
+    protected function rowActions(): array
+    {
+        return [
+            \Acunsoft\DataTable\Laravel\Action::make('view')->label('View')->icon('view', only: true)->handle(fn () => null),
+            \Acunsoft\DataTable\Laravel\Action::make('edit')->label('Edit')->icon('edit')->handle(fn () => null),
+            \Acunsoft\DataTable\Laravel\Action::make('remove')->label('Remove')->icon('delete')->danger()->confirm('Sure?')->handle(fn (Order $order) => $order->delete()),
+        ];
+    }
+
+    protected function maxInlineActions(): ?int
+    {
+        return 1;
+    }
+
     protected function printable(): bool
     {
         return true;

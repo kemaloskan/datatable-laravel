@@ -73,7 +73,8 @@
         wire:loading.class="adt-loading" wire:loading.attr="aria-busy">
         <div class="adt-notice" role="status" wire:loading>{{ $this->tableText('loading') }}</div>
         <div class="adt-scroll">
-            <table @class(['adt-table', 'adt-has-p2' => $collapsible && in_array(2, $levels, true), 'adt-has-p3' => $collapsible && in_array(3, $levels, true)])>
+            <table @class(['adt-table', 'adt-has-p2' => $collapsible && in_array(2, $levels, true), 'adt-has-p3' => $collapsible && in_array(3, $levels, true)])
+                @if ($selectable) x-data="{ anchor: null }" @endif>
                 @if ($this->caption() !== null)
                     <caption>{{ $this->caption() }}</caption>
                 @endif
@@ -160,7 +161,8 @@
                                 <td class="adt-select">
                                     <input type="checkbox"
                                         aria-label="{{ $this->tableText('select_row', ['name' => $name]) }}"
-                                        wire:click="toggleRow({{ \Illuminate\Support\Js::from($key) }})"
+                                        {{-- Shift+click selects (or clears) the rows between the last clicked one and this one. --}}
+                                        x-on:click="const key = {{ \Illuminate\Support\Js::from($key) }}; ($event.shiftKey && anchor !== null && anchor !== key) ? $wire.selectRange(anchor, key, $el.checked) : $wire.toggleRow(key); anchor = key"
                                         @checked($selected)>
                                 </td>
                             @endif
@@ -170,7 +172,7 @@
                             @endforeach
                             @if ($rowActions !== [])
                                 <td class="adt-actions{{ $collapsible ? ' adt-col--p2' : '' }}" data-label="{{ $this->tableText('actions') }}">
-                                    @include('acun-datatable::livewire.row-actions')
+                                    @include('acun-datatable::livewire.row-actions', ['maxInline' => $this->maxInlineActions()])
                                 </td>
                             @endif
                         </tr>

@@ -27,6 +27,9 @@ final class Action
     private ?string $confirm = null;
     private ?Closure $visible = null;
     private ?Closure $handler = null;
+    private ?string $icon = null;
+    private bool $iconOnly = false;
+    private bool $danger = false;
 
     private function __construct(private readonly string $id)
     {
@@ -63,6 +66,31 @@ final class Action
         return $this->with('visible', $visible);
     }
 
+    /**
+     * An icon before the label: `view`, `edit`, `delete`, `copy`, `check`,
+     * `download`, or your own SVG path data (24×24).
+     */
+    public function icon(string $icon, bool $only = false): self
+    {
+        if (Support\Icons::path($icon) === null) {
+            throw new InvalidArgumentException("Action [{$this->id}] icon must be a built-in name or SVG path data.");
+        }
+
+        return $this->with('icon', $icon)->with('iconOnly', $only);
+    }
+
+    /** Show only the icon; the label becomes its accessible name and tooltip. */
+    public function iconOnly(bool $only = true): self
+    {
+        return $this->with('iconOnly', $only);
+    }
+
+    /** A destructive action, shown in the danger colour. */
+    public function danger(bool $danger = true): self
+    {
+        return $this->with('danger', $danger);
+    }
+
     public function handle(Closure $handler): self
     {
         return $this->with('handler', $handler);
@@ -71,6 +99,9 @@ final class Action
     public function id(): string { return $this->id; }
     public function labelText(): string { return $this->label; }
     public function confirmText(): ?string { return $this->confirm; }
+    public function iconPath(): ?string { return $this->icon === null ? null : Support\Icons::path($this->icon); }
+    public function isIconOnly(): bool { return $this->iconOnly && $this->icon !== null; }
+    public function isDanger(): bool { return $this->danger; }
 
     public function isVisible(mixed ...$arguments): bool
     {

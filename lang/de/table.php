@@ -30,6 +30,7 @@ return [
     'clear_selection' => 'Auswahl aufheben',
     'actions' => 'Aktionen',
     'row_action' => ':action: :name',
+    'more_actions' => 'Weitere Aktionen: :name',
     'bulk_actions' => 'Ausgewählte Zeilen',
     'filters' => 'Filter',
     'clear_filters' => 'Filter zurücksetzen',

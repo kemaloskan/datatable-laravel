@@ -119,6 +119,12 @@ URL are ignored, and at least one column always stays visible.
 
 ### Row and bulk actions
 
+`->icon('edit')` (or `'view'`, `'delete'`, `'copy'`, `'check'`, `'download'`,
+or SVG path data), `->icon('view', only: true)` for an icon button,
+`->danger()` for destructive actions; `maxInlineActions()` keeps the first
+actions in the row and moves the rest into a "⋮" menu. Shift+click on a row
+checkbox selects a range (`selectRange()`).
+
 ```php
 use Acunsoft\DataTable\Laravel\Action;
 

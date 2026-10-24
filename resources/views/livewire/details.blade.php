@@ -15,7 +15,7 @@
     @if ($rowActions !== [])
         <div class="adt-detail-item{{ $all ? '' : ' adt-col--p2' }}">
             <dt>{{ $this->tableText('actions') }}</dt>
-            <dd class="adt-detail-actions">@include('acun-datatable::livewire.row-actions')</dd>
+            <dd class="adt-detail-actions">@include('acun-datatable::livewire.row-actions', ['maxInline' => null])</dd>
         </div>
     @endif
 </dl>

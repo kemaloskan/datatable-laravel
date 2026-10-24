@@ -30,6 +30,7 @@ return [
     'clear_selection' => 'Clear selection',
     'actions' => 'Actions',
     'row_action' => ':action: :name',
+    'more_actions' => 'More actions: :name',
     'bulk_actions' => 'Selected rows',
     'filters' => 'Filters',
     'clear_filters' => 'Clear filters',

@@ -174,6 +174,12 @@ trait WithDataTable
      * Keep the header row at the top of the window while the page scrolls
      * (DataTables `fixedHeader`). Below a fixed top bar set `--adt-sticky-top`.
      */
+    /** Row actions shown as buttons in the row; the rest go into a "⋮" menu. `null`: all in the row. */
+    protected function maxInlineActions(): ?int
+    {
+        return null;
+    }
+
     /** Shift+click adds a second sort column. Return false to always sort by one column. */
     protected function multiSort(): bool
     {
@@ -532,6 +538,32 @@ trait WithDataTable
         } elseif (count($selected) < $this->maxSelected()) {
             $this->selected = [...$selected, $key];
         }
+    }
+
+    /**
+     * Shift+click: select (`$select` true) or clear every row of the current
+     * page from `$from` to `$to`, both included. Keys not on the page are ignored.
+     */
+    public function selectRange(string|int $from, string|int $to, bool $select = true): void
+    {
+        $page = $this->pageKeys();
+        $start = array_search((string) $from, $page, true);
+        $end = array_search((string) $to, $page, true);
+        if ($start === false || $end === false) {
+            return;
+        }
+        $range = array_slice($page, min($start, $end), abs($end - $start) + 1);
+        if ($this->allMatching) {
+            $this->excluded = $select
+                ? array_values(array_diff($this->excluded, $range))
+                : array_values(array_unique([...$this->excluded, ...$range]));
+
+            return;
+        }
+        $selected = $this->selectedKeys();
+        $this->selected = $select
+            ? array_slice(array_values(array_unique([...$selected, ...$range])), 0, max(count($selected), $this->maxSelected()))
+            : array_values(array_diff($selected, $range));
     }
 
     /** Select the rows of the current page, or clear them when all are selected. */

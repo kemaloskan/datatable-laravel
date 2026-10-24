@@ -30,6 +30,7 @@ return [
     'clear_selection' => 'Seçimi temizle',
     'actions' => 'İşlemler',
     'row_action' => ':name: :action',
+    'more_actions' => 'Diğer işlemler: :name',
     'bulk_actions' => 'Seçili satırlar',
     'filters' => 'Filtreler',
     'clear_filters' => 'Filtreleri temizle',
