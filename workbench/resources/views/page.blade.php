@@ -6,6 +6,8 @@
 <meta name="csrf-token" content="{{ csrf_token() }}">
 <title>Workbench · {{ class_basename($component) }}</title>
 <link rel="stylesheet" href="/styles.css">
+<link rel="stylesheet" href="/import/styles.css">
+<script src="/import/acun-datatable-import.min.js"></script>
 <style>body { font-family: system-ui, sans-serif; margin: 0; padding: 24px 16px; background: #f5f6f8; }</style>
 @livewireStyles
 </head>

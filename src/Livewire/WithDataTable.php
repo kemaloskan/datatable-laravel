@@ -358,6 +358,18 @@ trait WithDataTable
         ];
     }
 
+    /**
+     * The address of a TableImport (`Route::acunImport()`), e.g.
+     * `route('orders.import')` or `url('import/orders')`: the tools menu gets
+     * "Import…", which opens the import dialog of @acunsoft/datatable-import
+     * (load its `acun-datatable-import.min.js` and `styles.css` on the page);
+     * the table is refreshed when rows changed. Null (default): no such item.
+     */
+    protected function importEndpoint(): ?string
+    {
+        return null;
+    }
+
     /** Show "Print" in the tools menu: prints only the table (the rows on screen), not the page around it. */
     protected function printable(): bool
     {

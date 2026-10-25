@@ -25,6 +25,7 @@ final class WorkbenchServiceProvider extends ServiceProvider
         'edit' => Fixtures\EditOrdersTable::class,
         'cursor' => Fixtures\CursorOrdersTable::class,
         'filters' => Fixtures\FilterOrdersTable::class,
+        'import' => Fixtures\ImportOrdersTable::class,
     ];
 
     public function register(): void
@@ -48,6 +49,11 @@ final class WorkbenchServiceProvider extends ServiceProvider
         Route::middleware('web')->group(function (): void {
             Route::get('/', fn () => 'Acun DataTable workbench: '.implode(', ', array_map(fn ($name) => "/tables/{$name}", array_keys(self::TABLES))));
             Route::get('/styles.css', fn () => response()->file(__DIR__.'/../../../../renderer-dom/src/styles.css', ['Content-Type' => 'text/css']));
+            // The import dialog (@acunsoft/datatable-import, built) and the import protocol for OrdersImport.
+            Route::get('/import/{file}', fn (string $file) => response()->file(__DIR__.'/../../../../import/dist/'.$file, [
+                'Content-Type' => str_ends_with($file, '.css') ? 'text/css' : 'text/javascript',
+            ]))->where('file', 'acun-datatable-import\.min\.js|styles\.css|testing\.js');
+            Route::acunImport('import/orders', Fixtures\OrdersImport::class);
             Route::get('/reset', function () {
                 $this->fresh();
 

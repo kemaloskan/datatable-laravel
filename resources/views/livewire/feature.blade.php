@@ -114,8 +114,8 @@
         @break
 
     @case('tools')
-        @php $exportFormats = array_values(array_intersect($this->exportFormats(), ['xlsx', 'csv'])); @endphp
-        @if ($exportFormats !== [] || $this->printable() || $importable)
+        @php $exportFormats = array_values(array_intersect($this->exportFormats(), ['xlsx', 'csv'])); $importEndpoint = $this->importEndpoint(); @endphp
+        @if ($exportFormats !== [] || $this->printable() || $importable || $importEndpoint !== null)
             <details class="adt-columns adt-menu" wire:ignore.self x-data @click.outside="$el.open = false" @keydown.escape="$el.open = false; $el.querySelector('summary').focus()" @toggle="@include('acun-datatable::livewire.menu-place')">
                 @php $button = $this->toolbarButton('tools', $this->tableText('tools'), 'download'); @endphp
                 <summary @if ($button['class'] !== '') class="{{ $button['class'] }}" @endif @if ($button['iconOnly']) title="{{ $button['label'] }}" @endif>
@@ -131,13 +131,16 @@
                                 @click="$el.closest('details').open = false">{{ $this->tableText('export_'.$format) }}</button>
                         @endforeach
                     @endif
-                    @if ($this->printable() || $importable)
+                    @if ($this->printable() || $importable || $importEndpoint !== null)
                         @if ($exportFormats !== []) <hr class="adt-menu-separator"> @endif
                         @if ($this->printable())
                             <button type="button" class="adt-menu-item adt-print-button"
                                 @click="$el.closest('details').open = false; @include('acun-datatable::livewire.print')">{{ $this->tableText('print') }}</button>
                         @endif
-                        @if ($importable)
+                        @if ($importEndpoint !== null)
+                            <button type="button" class="adt-menu-item adt-import-open"
+                                @click="$el.closest('details').open = false; @include('acun-datatable::livewire.import-open', ['url' => $importEndpoint])">{{ $this->tableText('import_open') }}</button>
+                        @elseif ($importable)
                             <label class="adt-menu-item" for="{{ $importId }}" tabindex="0"
                                 @keydown.enter.prevent="$el.click()" @keydown.space.prevent="$el.click()"
                                 @click="$el.closest('details').open = false">{{ $this->tableText('import_open') }}</label>

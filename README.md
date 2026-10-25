@@ -720,6 +720,77 @@ Route::get('/orders/export', function (Request $request) {
   never a formula. Too many rows or a bad query answer HTTP 422.
 - xlsx needs `ext-zip`.
 
+## Import with the import dialog: `TableImport`
+
+The import dialog of `@acunsoft/datatable-import` (file and drag and drop,
+column mapping with a preview, progress, results, error report) talks to your
+back end by the import protocol `acun-import/1`. `TableImport` is that back
+end for one kind of record — or write your own; the dialog does not mind.
+
+```php
+use Acunsoft\DataTable\Laravel\Column;
+use Acunsoft\DataTable\Laravel\Import\{ImportContext, TableImport};
+
+final class OrdersImport extends TableImport
+{
+    protected function columns(): array
+    {
+        return [
+            Column::make('email')->header('E-posta'),
+            Column::make('customer')->header('Müşteri'),
+            Column::make('total')->header('Tutar')->type('decimal'),
+        ];
+    }
+
+    public function authorize(Request $request): bool { return $request->user()?->can('import', Order::class) ?? false; }
+    protected function required(): array { return ['email']; }
+    protected function importKey(): ?string { return 'email'; }            // insert, update or upsert by e-mail
+    protected function tenant(Request $request): ?string { return (string) $request->user()->team_id; }
+    protected function query(ImportContext $context): Relation { return Team::findOrFail($context->tenant)->orders(); }
+}
+
+// routes/web.php
+Route::middleware(['web', 'auth'])->group(fn () => Route::acunImport('orders/import', OrdersImport::class));
+```
+
+On a Livewire table, `importEndpoint()` adds "Import…" to the tools menu, which
+opens the dialog (load `acun-datatable-import.min.js` and its `styles.css` on
+the page); the table is refreshed when rows changed:
+
+```php
+protected function importEndpoint(): ?string { return url('orders/import'); }
+```
+
+**What it does for you** — everything the protocol asks of a back end:
+
+- **Limits, always checked here:** `maxKilobytes()` (10 MB), `maxRows()`
+  (100,000), `accept()` (`xlsx`, `csv`), plus the file's own signature (an
+  xlsx is a zip archive, a CSV has no NUL bytes) and `SheetReader`'s archive
+  limits. The dialog only shows them as hints.
+- **Ownership:** every request is authorized; an import belongs to its user
+  (or a guest's session) on `guard()` and to its `tenant()`; anyone else gets
+  404. Uploads with the same `Idempotency-Key` give the same import.
+- **The mapping is checked again on start**: one entry per file column, known
+  columns at most once, every `required()` column, an offered mode.
+- **Saving** in chunks of `chunkSize()` (1,000), each in a transaction, typed
+  by `RowImporter` (Turkish `1.234,50` and `23.10.2026` with
+  `readOptions()`). The default `save()` inserts, updates or upserts by
+  `importKey()` within `query()` (a query, a relation such as
+  `$team->orders()` — which also sets the foreign key — or a query builder);
+  `attributes()` adds what the file does not hold. Override `save()` to store
+  rows your way and report with `$context->inserted()`, `updated()`,
+  `skipped()` and `reject($line, $message, $column, $value)`.
+- **At once or in the background — your choice:** `shouldQueue(int $rows)`
+  (default `false`) dispatches `RunTableImport` on your queue
+  (`queueConnection()`, `queueName()`; `database`, `redis`, `sqs`, `sync` —
+  none is required), as the user who started it. The dialog follows the
+  progress after every chunk and can cancel between chunks.
+- **State** lives in the app's cache store (any driver; `array` only works in
+  one request), files on `disk()` (`local`, private) for `keepSeconds()` (a
+  day): the upload is deleted when the import ends, the CSV error report
+  (formula-guarded) when it expires. Schedule `acun-datatable:prune` daily to
+  remove what was left behind.
+
 ## Import on the server: `SheetReader` and `RowImporter`
 
 ```php

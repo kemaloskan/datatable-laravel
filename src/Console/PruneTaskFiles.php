@@ -7,12 +7,12 @@ namespace Acunsoft\DataTable\Laravel\Console;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Storage;
 
-/** Deletes queued-export files nobody downloaded (older than a day). Schedule it daily. */
+/** Deletes queued-export files nobody downloaded and import files (uploads, error reports) older than a day. Schedule it daily. */
 final class PruneTaskFiles extends Command
 {
     protected $signature = 'acun-datatable:prune {--disk=local : The disk exports are written to} {--hours=24 : Delete files older than this}';
 
-    protected $description = 'Delete queued table exports that were never downloaded';
+    protected $description = 'Delete old queued table exports and import files';
 
     public function handle(): int
     {
@@ -23,6 +23,14 @@ final class PruneTaskFiles extends Command
             if ($disk->lastModified($file) < $before) {
                 $disk->delete($file);
                 $deleted++;
+            }
+        }
+        // Imports (TableImport): a folder per import, gone once its newest file is older than the limit.
+        foreach ($disk->directories('acun-datatable/imports') as $folder) {
+            $files = $disk->allFiles($folder);
+            if ($files === [] || max(array_map(fn (string $file) => $disk->lastModified($file), $files)) < $before) {
+                $deleted += count($files);
+                $disk->deleteDirectory($folder);
             }
         }
         $this->info("Deleted {$deleted} file(s).");
