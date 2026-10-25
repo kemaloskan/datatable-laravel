@@ -96,6 +96,74 @@ final class ImportTest extends TestCase
         self::assertSame([['Ayşe & Co', null], ['Ali', 2]], $sheet->rows);
     }
 
+    /** @return array{0: list<string>, 1: list<list<mixed>>} what stream() gives, chunk by chunk */
+    private function streamed(SheetReader $reader, string $path, int $size): array
+    {
+        $stream = $reader->stream($path);
+        $rows = [];
+        foreach ($stream->chunks($size) as $chunk) {
+            self::assertLessThanOrEqual($size, count($chunk));
+            $rows = [...$rows, ...$chunk];
+        }
+
+        return [$stream->headers, $rows];
+    }
+
+    public function test_stream_gives_the_rows_of_read_in_chunks(): void
+    {
+        $csv = $this->file("\u{FEFF}Müşteri;Not\r\n\"Ayşe; A.\";\"satır1\nsatır2\"\r\n\r\nAli\r\nVeli;x;fazla\r\n");
+        foreach ([$csv, __DIR__.'/Fixtures/openpyxl.xlsx', __DIR__.'/Fixtures/mac1904.xlsx'] as $path) {
+            $sheet = (new SheetReader())->read($path);
+            self::assertEquals([$sheet->headers, $sheet->rows], $this->streamed(new SheetReader(), $path, 2));
+        }
+        $stream = (new SheetReader())->stream($csv);
+        iterator_to_array($stream->chunks());
+        $this->expectException(\LogicException::class);
+        iterator_to_array($stream->chunks());
+    }
+
+    public function test_reading_in_pieces_crosses_character_and_element_boundaries(): void
+    {
+        // UTF-8 is checked in pieces of 1 MB: a "ş" across the first boundary is still UTF-8.
+        $sheet = (new SheetReader())->read($this->file("a\n".str_repeat('x', (1 << 20) - 3)."ş\nb"));
+        self::assertSame(['ş', 'b'], [mb_substr($sheet->rows[0][0], -1), $sheet->rows[1][0]]);
+        $windows1254 = mb_convert_encoding("Şehir\n".str_repeat("İğdır\n", 300_000), 'Windows-1254', 'UTF-8');
+        [$headers, $rows] = $this->streamed(new SheetReader(maxRows: 300_000), $this->file($windows1254), 1_000);
+        self::assertSame([['Şehir'], 300_000, ['İğdır']], [$headers, count($rows), $rows[299_999]]);
+
+        // A worksheet of several MB (read in 64 KB pieces, once refused by a regex limit as "no header row").
+        $main = 'xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"';
+        $rows = '';
+        $strings = '';
+        for ($i = 0; $i < 30_000; $i++) {
+            $rows .= '<row r="'.($i + 2).'"><c t="s"><v>'.$i.'</v></c><c t="inlineStr"><is><t>Ç &amp; '.$i.'</t></is></c><c><v>'.$i.'.5</v></c></row>'.($i % 13 === 0 ? '<row/>' : '');
+            $strings .= $i % 5 === 0 ? '<si/>' : '<si><r><t>Ş'.$i.'</t></r><r><t xml:space="preserve"> x</t></r></si>';
+        }
+        $path = $this->xlsx([
+            'xl/workbook.xml' => "<workbook {$main} xmlns:r=\"r\"><sheets><sheet name=\"S\" sheetId=\"1\" r:id=\"rId1\"/></sheets></workbook>",
+            'xl/_rels/workbook.xml.rels' => '<Relationships><Relationship Id="rId1" Type="x/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="x/sharedStrings" Target="sharedStrings.xml"/></Relationships>',
+            'xl/sharedStrings.xml' => "<sst {$main}>{$strings}</sst>",
+            'xl/worksheets/sheet1.xml' => "<worksheet {$main}><sheetData><row r=\"1\"><c t=\"inlineStr\"><is><t>Ad</t></is></c><c t=\"inlineStr\"><is><t>Not</t></is></c><c t=\"inlineStr\"><is><t>Tutar</t></is></c></row>{$rows}</sheetData></worksheet>",
+        ]);
+        [$headers, $read] = $this->streamed(new SheetReader(maxRows: 30_000), $path, 1_000);
+        self::assertSame(['Ad', 'Not', 'Tutar'], $headers);
+        self::assertCount(30_000, $read);
+        self::assertSame([['', 'Ç & 0', 0.5], ['Ş1 x', 'Ç & 1', 1.5], ['Ş29999 x', 'Ç & 29999', 29999.5]], [$read[0], $read[1], $read[29_999]]);
+        self::assertCount(30_000, (new SheetReader(maxRows: 30_000))->read($path)->rows);
+    }
+
+    public function test_a_zip_bomb_stream_is_refused_while_it_inflates(): void
+    {
+        $before = memory_get_usage(true);
+        try {
+            iterator_to_array((new SheetReader())->stream(__DIR__.'/Fixtures/zip-bomb.xlsx')->chunks());
+            self::fail('the zip bomb should be refused');
+        } catch (ImportException $error) {
+            self::assertStringContainsString('50', $error->getMessage());
+        }
+        self::assertLessThan(20 * 1024 * 1024, memory_get_peak_usage(true) - $before);
+    }
+
     public function test_limits_and_bad_files(): void
     {
         $reader = new SheetReader(maxRows: 2, maxColumns: 2, maxBytes: 2048, maxEntryBytes: 1024);

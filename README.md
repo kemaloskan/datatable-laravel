@@ -806,6 +806,17 @@ Windows-1254, as Turkish Excel writes them) and xlsx (shared strings, dates,
 file size, rows, columns, archive entries and inflated entry size (counted
 while reading). Errors are `ImportException`s with a translated message.
 
+For large files, `stream()` reads the same rows with the same checks but gives
+the headers at once and the rows in chunks, reading the file (and an xlsx
+worksheet as it inflates) piece by piece, so memory follows the chunk, not the
+file; `TableImport` reads uploads this way:
+
+```php
+$sheet = (new SheetReader(maxRows: 1_000_000))->stream($path, 'csv');
+$sheet->headers;                      // ['Customer', 'Total']
+foreach ($sheet->chunks(1_000) as $rows) { /* up to 1,000 rows, each as wide as the headers */ }
+```
+
 ## Using the parts directly
 
 ```php

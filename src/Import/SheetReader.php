@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Acunsoft\DataTable\Laravel\Import;
 
 use Carbon\CarbonImmutable;
+use Generator;
 use ZipArchive;
 
 /**
@@ -19,6 +20,10 @@ use ZipArchive;
  *   never evaluated). XML is scanned as text: no DTD, no entity expansion.
  * - Limits: file size, rows, columns, archive entries and the inflated size
  *   of each entry, counted while reading (zip-bomb safe).
+ *
+ * `read()` gives the whole Sheet; `stream()` gives the headers at once and the
+ * rows in chunks as the file is read, so memory follows the chunk, not the
+ * file (both read the same rows).
  */
 final class SheetReader
 {
@@ -35,6 +40,36 @@ final class SheetReader
     /** @param string|null $extension `csv`, `txt` or `xlsx`; default from the path */
     public function read(string $path, ?string $extension = null, string|int|null $sheet = null): Sheet
     {
+        return $this->sheet(iterator_to_array($this->records($path, $extension, $sheet), false));
+    }
+
+    /**
+     * The headers at once, the rows as they are read (`chunks()`), with the
+     * same rows, checks and limits as `read()`.
+     *
+     * @param string|null $extension `csv`, `txt` or `xlsx`; default from the path
+     */
+    public function stream(string $path, ?string $extension = null, string|int|null $sheet = null): SheetStream
+    {
+        $records = $this->records($path, $extension, $sheet);
+        $headers = $this->headers($records->valid() ? $records->current() : []);
+        $records->next();
+
+        return new SheetStream($headers, $records);
+    }
+
+    public function csv(string $content): Sheet
+    {
+        $stream = fopen('php://temp', 'w+b');
+        fwrite($stream, $content);
+        rewind($stream);
+
+        return $this->sheet(iterator_to_array($this->limited($this->csvRecords($stream)), false));
+    }
+
+    /** @return Generator<int, list<mixed>> the non-empty records of a file, the header row first */
+    private function records(string $path, ?string $extension, string|int|null $sheet): Generator
+    {
         if (! is_file($path) || ! is_readable($path)) {
             throw new ImportException(__('acun-datatable::table.file_unreadable'));
         }
@@ -43,42 +78,111 @@ final class SheetReader
         }
         $extension = strtolower($extension ?? pathinfo($path, PATHINFO_EXTENSION));
 
-        return match ($extension) {
-            'csv', 'txt' => $this->csv((string) file_get_contents($path)),
-            'xlsx' => $this->xlsx($path, $sheet),
+        yield from $this->limited(match ($extension) {
+            'csv', 'txt' => $this->csvRecords(fopen($path, 'rb')),
+            'xlsx' => $this->xlsxRecords($path, $sheet),
             default => throw new ImportException(__('acun-datatable::table.file_type')),
-        };
+        });
     }
 
-    public function csv(string $content): Sheet
+    /**
+     * @param Generator<int, list<mixed>> $records
+     * @return Generator<int, list<mixed>> the records, refused past the row limit (the header row not counted)
+     */
+    private function limited(Generator $records): Generator
     {
-        if (str_starts_with($content, "\u{FEFF}")) {
-            $content = substr($content, 3);
-        } elseif (! mb_check_encoding($content, 'UTF-8')) {
-            $content = mb_convert_encoding($content, 'UTF-8', 'Windows-1254');
-        }
-        $delimiter = $this->detect($content);
-        $stream = fopen('php://temp', 'w+b');
-        fwrite($stream, $content);
-        rewind($stream);
-        $records = [];
-        $line = 0;
-        while (($record = fgetcsv($stream, null, $delimiter, '"', '')) !== false) {
-            $line++;
-            if ($record === [null] || $record === ['']) {
-                continue;
-            }
-            if (count($record) > $this->maxColumns) {
-                throw new ImportException(__('acun-datatable::table.too_many_columns', ['max' => $this->maxColumns]));
-            }
-            $records[] = $record;
-            if (count($records) > $this->maxRows + 1) {
+        $count = 0;
+        foreach ($records as $record) {
+            if (++$count > $this->maxRows + 1) {
                 throw new ImportException(__('acun-datatable::table.too_many_rows', ['max' => $this->maxRows]));
             }
+            yield $record;
         }
-        fclose($stream);
+    }
 
-        return $this->sheet($records);
+    /**
+     * The records of a CSV stream (closed when done). A UTF-8 byte order mark
+     * is skipped; a stream that is not valid UTF-8 is read as Windows-1254,
+     * converted into a temporary stream (in memory up to 2 MB, then on disk).
+     *
+     * @param resource $handle
+     * @return Generator<int, list<string|null>>
+     */
+    private function csvRecords($handle): Generator
+    {
+        try {
+            if (fread($handle, 3) === "\u{FEFF}") {
+                $stream = $handle;
+            } elseif (self::isUtf8($handle)) {
+                rewind($handle);
+                $stream = $handle;
+            } else {
+                rewind($handle);
+                $stream = fopen('php://temp/maxmemory:'.(2 * 1024 * 1024), 'w+b');
+                while (($chunk = fread($handle, 1 << 20)) !== false && $chunk !== '') {
+                    // Windows-1254 has one byte per character: pieces convert like the whole.
+                    fwrite($stream, mb_convert_encoding($chunk, 'UTF-8', 'Windows-1254'));
+                }
+                fclose($handle);
+                rewind($stream);
+            }
+            $start = (int) ftell($stream);
+            $head = '';
+            while (preg_match('/[^\r\n][\r\n]/', $head) !== 1 && ($chunk = fread($stream, 65536)) !== false && $chunk !== '') {
+                $head .= $chunk;
+            }
+            $delimiter = $this->detect($head);
+            fseek($stream, $start);
+            while (($record = fgetcsv($stream, null, $delimiter, '"', '')) !== false) {
+                if ($record === [null] || $record === ['']) {
+                    continue;
+                }
+                if (count($record) > $this->maxColumns) {
+                    throw new ImportException(__('acun-datatable::table.too_many_columns', ['max' => $this->maxColumns]));
+                }
+                yield $record;
+            }
+        } finally {
+            if (is_resource($handle)) {
+                fclose($handle);
+            }
+            if (isset($stream) && is_resource($stream)) {
+                fclose($stream);
+            }
+        }
+    }
+
+    /**
+     * Whether a whole stream is valid UTF-8, checked in pieces cut between
+     * characters (as one check of the whole would answer).
+     *
+     * @param resource $handle
+     */
+    private static function isUtf8($handle): bool
+    {
+        rewind($handle);
+        $carry = '';
+        while (($chunk = fread($handle, 1 << 20)) !== false && $chunk !== '') {
+            $chunk = $carry.$chunk;
+            $length = strlen($chunk);
+            $cut = $length;
+            for ($back = 1; $back <= min(3, $length); $back++) {
+                $byte = ord($chunk[$length - $back]);
+                if ($byte >= 0xC0) {
+                    $cut = ($byte >= 0xF0 ? 4 : ($byte >= 0xE0 ? 3 : 2)) > $back ? $length - $back : $length;
+                    break;
+                }
+                if ($byte < 0x80) {
+                    break;
+                }
+            }
+            if (! mb_check_encoding(substr($chunk, 0, $cut), 'UTF-8')) {
+                return false;
+            }
+            $carry = substr($chunk, $cut);
+        }
+
+        return $carry === '' || mb_check_encoding($carry, 'UTF-8');
     }
 
     private function detect(string $content): string
@@ -91,7 +195,8 @@ final class SheetReader
         return reset($counts) === 0 ? ',' : (string) array_key_first($counts);
     }
 
-    private function xlsx(string $path, string|int|null $wanted): Sheet
+    /** @return Generator<int, list<mixed>> the non-empty rows of a worksheet, read as it inflates */
+    private function xlsxRecords(string $path, string|int|null $wanted): Generator
     {
         if (! class_exists(ZipArchive::class)) {
             throw new ImportException(__('acun-datatable::table.file_needs_zip'));
@@ -142,12 +247,6 @@ final class SheetReader
                 return $fallback;
             };
 
-            $shared = [];
-            preg_match_all('/<(?:\w+:)?si\b[^>]*?(?:\/>|>(.*?)<\/(?:\w+:)?si>)/s', $this->entry($zip, $byType('/sharedStrings', 'xl/sharedStrings.xml')) ?? '', $matches);
-            foreach ($matches[1] as $inner) {
-                $shared[] = self::runs($inner);
-            }
-
             $styles = $this->entry($zip, $byType('/styles', 'xl/styles.xml')) ?? '';
             $custom = [];
             preg_match_all('/<(?:\w+:)?numFmt\b([^>]*?)\/?>/', $styles, $matches);
@@ -166,56 +265,207 @@ final class SheetReader
                 }
             }
 
+            $shared = [];
+            foreach (self::elements($this->pieces($zip, $byType('/sharedStrings', 'xl/sharedStrings.xml')), 'si') as $inner) {
+                $shared[] = self::runs($inner ?? '');
+            }
+
             $sheetPath = $chosen['relation'] !== null && isset($relations[$chosen['relation']])
                 ? $relations[$chosen['relation']]['target'] : 'xl/worksheets/sheet1.xml';
-            $worksheet = $this->entry($zip, $sheetPath) ?? throw new ImportException(__('acun-datatable::table.file_damaged'));
+            if ($zip->statName($sheetPath) === false) {
+                throw new ImportException(__('acun-datatable::table.file_damaged'));
+            }
+            foreach (self::elements($this->pieces($zip, $sheetPath), 'row', 'sheetData') as $rowXml) {
+                $cells = $this->rowCells($rowXml ?? '', $shared, $dateStyles, $date1904);
+                if (array_filter($cells, fn ($cell) => $cell !== null && $cell !== '') !== []) {
+                    yield $cells;
+                }
+            }
         } finally {
             $zip->close();
         }
+    }
 
-        $data = preg_match('/<(?:\w+:)?sheetData\b[^>]*?(?:\/>|>(.*?)<\/(?:\w+:)?sheetData>)/s', $worksheet, $match) === 1 ? ($match[1] ?? '') : '';
-        $records = [];
-        if (preg_match_all('/<(?:\w+:)?row\b[^>]*?(?:\/>|>(.*?)<\/(?:\w+:)?row>)/s', $data, $rows) === false) {
+    /**
+     * The cells of one row (its inner XML), placed by their references.
+     *
+     * @param list<string> $shared
+     * @param array<int, true> $dateStyles
+     * @return list<mixed>
+     */
+    private function rowCells(string $rowXml, array $shared, array $dateStyles, bool $date1904): array
+    {
+        $cells = [];
+        $next = 0;
+        preg_match_all('/<(?:\w+:)?c\b([^>]*?)(?:\/>|>(.*?)<\/(?:\w+:)?c>)/s', $rowXml, $found, PREG_SET_ORDER);
+        foreach ($found as $cellMatch) {
+            $attrs = self::attributes($cellMatch[1]);
+            $index = isset($attrs['r']) ? (self::columnIndex($attrs['r']) ?? $next) : $next;
+            $next = $index + 1;
+            if ($index >= $this->maxColumns) {
+                throw new ImportException(__('acun-datatable::table.too_many_columns', ['max' => $this->maxColumns]));
+            }
+            $inner = $cellMatch[2] ?? '';
+            $value = preg_match('/<(?:\w+:)?v\b[^>]*>(.*?)<\/(?:\w+:)?v>/s', $inner, $v) === 1 ? self::decode($v[1]) : null;
+            $cell = match ($attrs['t'] ?? 'n') {
+                's' => $value === null ? null : ($shared[(int) $value] ?? null),
+                'inlineStr' => self::runs(preg_match('/<(?:\w+:)?is\b[^>]*>(.*?)<\/(?:\w+:)?is>/s', $inner, $is) === 1 ? $is[1] : ''),
+                'str' => $value,
+                'b' => $value === null ? null : ($value === '1' || $value === 'true'),
+                'e' => null,
+                'd' => $value === null ? null : rescue(fn () => CarbonImmutable::parse($value), null, false),
+                default => $value === null || trim($value) === '' || ! is_numeric($value) ? ($value === '' ? null : $value)
+                    : (isset($dateStyles[(int) ($attrs['s'] ?? 0)]) ? self::fromSerial((float) $value, $date1904) : 0 + $value),
+            };
+            while (count($cells) < $index) {
+                $cells[] = null;
+            }
+            $cells[$index] = $cell;
+        }
+
+        return $cells;
+    }
+
+    /**
+     * One archive entry in pieces as it inflates (none when it does not
+     * exist), refusing entries that declare or inflate beyond the limit.
+     *
+     * @return Generator<int, string>
+     */
+    private function pieces(ZipArchive $zip, string $name): Generator
+    {
+        $stat = $zip->statName($name);
+        if ($stat === false) {
+            return;
+        }
+        if (($stat['encryption_method'] ?? 0) !== 0) {
+            throw new ImportException(__('acun-datatable::table.file_encrypted'));
+        }
+        $tooLarge = fn () => new ImportException(__('acun-datatable::table.file_too_large', ['mb' => intdiv($this->maxEntryBytes, 1024 * 1024)]));
+        if ($stat['size'] > $this->maxEntryBytes) {
+            throw $tooLarge();
+        }
+        $stream = $zip->getStream($name);
+        if ($stream === false) {
             throw new ImportException(__('acun-datatable::table.file_damaged'));
         }
-        foreach ($rows[1] as $rowXml) {
-            $cells = [];
-            $next = 0;
-            preg_match_all('/<(?:\w+:)?c\b([^>]*?)(?:\/>|>(.*?)<\/(?:\w+:)?c>)/s', $rowXml, $found, PREG_SET_ORDER);
-            foreach ($found as $cellMatch) {
-                $attrs = self::attributes($cellMatch[1]);
-                $index = isset($attrs['r']) ? (self::columnIndex($attrs['r']) ?? $next) : $next;
-                $next = $index + 1;
-                if ($index >= $this->maxColumns) {
-                    throw new ImportException(__('acun-datatable::table.too_many_columns', ['max' => $this->maxColumns]));
+        try {
+            $total = 0;
+            while (! feof($stream)) {
+                $chunk = fread($stream, 65536);
+                if ($chunk === false) {
+                    break;
                 }
-                $inner = $cellMatch[2] ?? '';
-                $value = preg_match('/<(?:\w+:)?v\b[^>]*>(.*?)<\/(?:\w+:)?v>/s', $inner, $v) === 1 ? self::decode($v[1]) : null;
-                $cell = match ($attrs['t'] ?? 'n') {
-                    's' => $value === null ? null : ($shared[(int) $value] ?? null),
-                    'inlineStr' => self::runs(preg_match('/<(?:\w+:)?is\b[^>]*>(.*?)<\/(?:\w+:)?is>/s', $inner, $is) === 1 ? $is[1] : ''),
-                    'str' => $value,
-                    'b' => $value === null ? null : ($value === '1' || $value === 'true'),
-                    'e' => null,
-                    'd' => $value === null ? null : rescue(fn () => CarbonImmutable::parse($value), null, false),
-                    default => $value === null || trim($value) === '' || ! is_numeric($value) ? ($value === '' ? null : $value)
-                        : (isset($dateStyles[(int) ($attrs['s'] ?? 0)]) ? self::fromSerial((float) $value, $date1904) : 0 + $value),
-                };
-                while (count($cells) < $index) {
-                    $cells[] = null;
+                // The declared size can lie (zip bombs): count what actually comes out.
+                $total += strlen($chunk);
+                if ($total > $this->maxEntryBytes) {
+                    throw $tooLarge();
                 }
-                $cells[$index] = $cell;
+                yield $chunk;
             }
-            if (array_filter($cells, fn ($cell) => $cell !== null && $cell !== '') === []) {
-                continue;
+        } finally {
+            fclose($stream);
+        }
+    }
+
+    /**
+     * The inner XML of each `<name>` element of XML read in pieces (null for
+     * an empty `<name/>`), matched as the whole-text regex matched them. With
+     * a container, only the elements in its first occurrence count; one that
+     * opens and never closes makes the file damaged.
+     *
+     * @param Generator<int, string> $pieces
+     * @return Generator<int, string|null>
+     */
+    private static function elements(Generator $pieces, string $name, ?string $container = null): Generator
+    {
+        $begin = $container !== null ? '/<(?:\w+:)?'.$container.'\b[^>]*?(\/?)>/' : null;
+        $next = '/<(?:\w+:)?'.$name.'\b'.($container !== null ? '|<\/(?:\w+:)?'.$container.'>' : '').'/';
+        $close = '/<\/(?:\w+:)?('.$name.($container !== null ? '|'.$container : '').')>/';
+        $buffer = '';
+        $at = 0; // where to look next in the buffer
+        $scanned = 0; // where the search for the end of an incomplete element goes on
+        $inside = $container === null;
+        $final = false;
+        $match = function (string $pattern, int $offset, ?array &$found) use (&$buffer): bool {
+            $result = preg_match($pattern, $buffer, $found, PREG_OFFSET_CAPTURE, $offset);
+            if ($result === false) {
+                throw new ImportException(__('acun-datatable::table.file_damaged'));
             }
-            $records[] = $cells;
-            if (count($records) > $this->maxRows + 1) {
-                throw new ImportException(__('acun-datatable::table.too_many_rows', ['max' => $this->maxRows]));
+
+            return $result === 1;
+        };
+        // Keep only a tag that may still be arriving.
+        $keepTag = function () use (&$buffer, &$at): int {
+            $tag = $at < strlen($buffer) ? strrpos($buffer, '<', $at) : false;
+
+            return $tag === false ? strlen($buffer) : $tag;
+        };
+        for (;;) {
+            if (! $inside && $begin !== null) {
+                if ($match($begin, $at, $found)) {
+                    if ($found[1][0] === '/') {
+                        return; // <sheetData/>: no rows
+                    }
+                    $inside = true;
+                    $at = $found[0][1] + strlen($found[0][0]);
+                } else {
+                    $at = $keepTag();
+                }
+            }
+            while ($inside) {
+                if (! $match($next, $at, $found)) {
+                    $at = $keepTag();
+                    $scanned = 0;
+                    break;
+                }
+                if ($found[0][0][1] === '/') {
+                    return; // the container closes
+                }
+                $start = $found[0][1];
+                $tagEnd = strpos($buffer, '>', $start);
+                if ($tagEnd === false) {
+                    $at = $start;
+                    break;
+                }
+                if ($buffer[$tagEnd - 1] === '/') {
+                    yield null;
+                    $at = $tagEnd + 1;
+                    continue;
+                }
+                if (! $match($close, max($tagEnd + 1, $scanned), $end)) {
+                    if ($final) {
+                        $at = $start + 1; // never closed: not an element
+                        continue;
+                    }
+                    $at = $start;
+                    $scanned = max($tagEnd + 1, strlen($buffer) - 128); // its end can only be in what comes next
+                    break;
+                }
+                if ($end[1][0] === $name) {
+                    yield substr($buffer, $tagEnd + 1, $end[0][1] - $tagEnd - 1);
+                    $at = $end[0][1] + strlen($end[0][0]);
+                } else {
+                    $at = $start + 1; // the container closes inside it: not an element; the container ends next
+                }
+                $scanned = 0;
+            }
+            if ($final) {
+                if ($inside && $container !== null) {
+                    throw new ImportException(__('acun-datatable::table.file_damaged'));
+                }
+
+                return;
+            }
+            if ($pieces->valid()) {
+                $buffer = substr($buffer, $at).$pieces->current();
+                $scanned = max(0, $scanned - $at);
+                $at = 0;
+                $pieces->next();
+            } else {
+                $final = true;
             }
         }
-
-        return $this->sheet($records);
     }
 
     /** Read one archive entry, refusing entries that inflate beyond the limit. */
@@ -255,11 +505,7 @@ final class SheetReader
     /** @param list<list<mixed>> $records */
     private function sheet(array $records): Sheet
     {
-        $headerRow = array_shift($records) ?? [];
-        $headers = array_map(fn ($cell) => trim($cell instanceof \DateTimeInterface ? $cell->format('Y-m-d') : (string) $cell), $headerRow);
-        while ($headers !== [] && end($headers) === '') {
-            array_pop($headers);
-        }
+        $headers = $this->headers(array_shift($records) ?? []);
         $width = count($headers);
         $rows = array_map(function (array $row) use ($width) {
             $out = [];
@@ -271,6 +517,20 @@ final class SheetReader
         }, $records);
 
         return new Sheet($headers, $rows);
+    }
+
+    /**
+     * @param list<mixed> $headerRow
+     * @return list<string> the header texts, without trailing empty ones
+     */
+    private function headers(array $headerRow): array
+    {
+        $headers = array_map(fn ($cell) => trim($cell instanceof \DateTimeInterface ? $cell->format('Y-m-d') : (string) $cell), $headerRow);
+        while ($headers !== [] && end($headers) === '') {
+            array_pop($headers);
+        }
+
+        return $headers;
     }
 
     /** @return array<string, string> */

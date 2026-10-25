@@ -282,8 +282,15 @@ abstract class TableImport
         if (! in_array($extension, array_map('strtolower', $this->accept()), true) || ! $this->looksLike($file, $extension)) {
             return $this->problem(415, __('acun-datatable::table.file_type'), 'file');
         }
+        // Read once through: the headers, a preview and the row count, checked as a whole before anything is kept.
+        $count = 0;
+        $preview = [];
         try {
-            $sheet = (new SheetReader(maxRows: $this->maxRows(), maxBytes: $maxBytes))->read((string) $file->getRealPath(), $extension);
+            $sheet = (new SheetReader(maxRows: $this->maxRows(), maxBytes: $maxBytes))->stream((string) $file->getRealPath(), $extension);
+            foreach ($sheet->chunks() as $rows) {
+                $preview = [...$preview, ...array_slice($rows, 0, 5 - count($preview))];
+                $count += count($rows);
+            }
         } catch (ImportException $error) {
             return $this->problem(422, $error->getMessage(), 'file');
         }
@@ -296,9 +303,9 @@ abstract class TableImport
         $state = [
             'id' => $id, 'owner' => $owner, 'guard' => $this->guard(), 'user' => Auth::guard($this->guard())->id(),
             'tenant' => $this->tenant($request), 'name' => mb_substr(basename($file->getClientOriginalName()), 0, 200),
-            'extension' => $extension, 'path' => $path, 'headers' => array_values(array_map('strval', $sheet->headers)), 'rows' => count($sheet->rows),
+            'extension' => $extension, 'path' => $path, 'headers' => array_values(array_map('strval', $sheet->headers)), 'rows' => $count,
             'mapping' => $this->suggest($sheet->headers),
-            'preview' => array_map(fn (array $cells, int $index) => ['line' => $index + 2, 'cells' => array_map(fn ($cell) => self::text($cell), array_pad(array_slice($cells, 0, count($sheet->headers)), count($sheet->headers), null))], array_slice($sheet->rows, 0, 5), array_keys(array_slice($sheet->rows, 0, 5))),
+            'preview' => array_map(fn (array $cells, int $index) => ['line' => $index + 2, 'cells' => array_map(fn ($cell) => self::text($cell), array_pad(array_slice($cells, 0, count($sheet->headers)), count($sheet->headers), null))], $preview, array_keys($preview)),
             'status' => 'mapping', 'mode' => null, 'processed' => 0, 'inserted' => 0, 'updated' => 0, 'skipped' => 0, 'failed' => 0,
             'errors' => [], 'errorsTruncated' => false, 'report' => null, 'message' => null,
             'expiresAt' => now()->addSeconds($this->keepSeconds())->toIso8601String(),
@@ -408,8 +415,8 @@ abstract class TableImport
 
     /**
      * Read, validate and save an import that was started (at once, or in a
-     * queued job). Its state is updated after every chunk; a cancel is noticed
-     * between chunks.
+     * queued job), reading the file chunk by chunk. Its state is updated
+     * after every chunk; a cancel is noticed between chunks.
      */
     final public function process(string $id): void
     {
@@ -423,8 +430,7 @@ abstract class TableImport
         $context = new ImportContext($id, (string) $state['mode'], (string) $state['owner'], $state['tenant'], $state['user']);
         try {
             $local = $this->localCopy($state['path']);
-            $sheet = (new SheetReader(maxRows: $this->maxRows(), maxBytes: $this->maxKilobytes() * 1024))->read($local['path'], $state['extension']);
-            ($local['cleanup'])();
+            $sheet = (new SheetReader(maxRows: $this->maxRows(), maxBytes: $this->maxKilobytes() * 1024))->stream($local['path'], $state['extension']);
             // The user's mapping as headers the RowImporter knows (column IDs); file columns left out get none.
             $headers = array_map(fn ($column) => is_string($column) ? $column : '', $state['mapping']);
             $options = $this->readOptions();
@@ -437,12 +443,11 @@ abstract class TableImport
             foreach ($this->columns() as $column) {
                 $titles[$column->id()] = $column->headerText();
             }
-            $size = max(1, $this->chunkSize());
-            foreach (array_chunk($sheet->rows, $size) as $number => $rows) {
+            $offset = 0;
+            foreach ($sheet->chunks(max(1, $this->chunkSize())) as $rows) {
                 if (Cache::get($this->key($id).':cancel') === true) {
                     break;
                 }
-                $offset = $number * $size;
                 $result = $reader->import(new Sheet($headers, $rows));
                 $valid = array_map(fn (array $row) => ['line' => $row['line'] + $offset, 'values' => $row['values']], $result->rows);
                 $context->rejected = [];
@@ -476,6 +481,7 @@ abstract class TableImport
                     $state['status'] = 'running';
                 }
                 $this->store($state);
+                $offset += count($rows);
             }
             $fresh = Cache::get($this->key($id));
             $state = is_array($fresh) ? $fresh : $state;
@@ -484,6 +490,11 @@ abstract class TableImport
             report($error);
             $state['status'] = 'failed';
             $state['message'] = __('acun-datatable::table.import_failed');
+        } finally {
+            unset($sheet); // releases the file before a local copy is removed
+            if (isset($local)) {
+                ($local['cleanup'])();
+            }
         }
         $disk->delete($state['path']);
         $this->store($state);
