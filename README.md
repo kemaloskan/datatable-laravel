@@ -270,8 +270,8 @@ it never jumps in width; with a "10,000+" total it numbers the pages known to
 exist and stops at the result window.
 
 The tools menu holds everything that is not about the rows on screen: **export**
-(`exportFormats()`), **print** (`printable()`, the visible page without the
-controls) and **import** (`WithTableImport`). It only appears when at least one
+(`exportFormats()`), **print** (`printable()`: only the table with the rows on
+screen, not the page around it) and **import** (`WithTableImport`). It only appears when at least one
 of them is on.
 
 ### Editing in place

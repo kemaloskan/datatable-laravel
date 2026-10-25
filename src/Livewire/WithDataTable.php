@@ -309,7 +309,7 @@ trait WithDataTable
         return null;
     }
 
-    /** Show "Print" in the tools menu (prints the visible page without the controls). */
+    /** Show "Print" in the tools menu: prints only the table (the rows on screen), not the page around it. */
     protected function printable(): bool
     {
         return false;

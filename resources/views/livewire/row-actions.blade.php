@@ -16,7 +16,7 @@
         @if ($action->confirmText() !== null) wire:confirm="{{ $action->confirmText() }}" @endif>@if ($action->iconPath() !== null)<svg class="adt-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="{{ $action->iconPath() }}"/></svg>@endif @unless ($action->isIconOnly())<span>{{ $action->labelText() }}</span>@endunless</button>
 @endforeach
 @if ($menuActions !== [])
-    <details class="adt-row-menu" x-data @click.outside="$el.open = false" @keydown.escape="$el.open = false; $el.querySelector('summary').focus()">
+    <details class="adt-row-menu" x-data @click.outside="$el.open = false" @keydown.escape="$el.open = false; $el.querySelector('summary').focus()" @toggle="@include('acun-datatable::livewire.menu-place')">
         <summary class="adt-action adt-action--icon" aria-label="{{ $this->tableText('more_actions', ['name' => $name]) }}" title="{{ $this->tableText('more_actions', ['name' => $name]) }}"><svg class="adt-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="{{ \Acunsoft\DataTable\Laravel\Support\Icons::PATHS['more'] }}"/></svg></summary>
         <div class="adt-menu-list">
             @foreach ($menuActions as $action)

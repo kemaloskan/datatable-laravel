@@ -35,11 +35,11 @@
         @endphp
         @if ($panel->isNotEmpty())
             {{-- wire:ignore.self keeps the menu open while Livewire updates its content. --}}
-            <details class="adt-columns adt-menu adt-filters" wire:ignore.self x-data @click.outside="$el.open = false" @keydown.escape="$el.open = false; $el.querySelector('summary').focus()"
+            <details class="adt-columns adt-menu adt-filters" wire:ignore.self x-data @click.outside="$el.open = false" @keydown.escape="$el.open = false; $el.querySelector('summary').focus()" @toggle="@include('acun-datatable::livewire.menu-place')"
                 x-on:adt-filters-synced.window="$el.querySelectorAll('input').forEach(input => { if (input === document.activeElement) return; if (input.type === 'checkbox' || input.type === 'radio') input.checked = input.hasAttribute('checked'); else input.value = input.getAttribute('value') ?? ''; })">
                 <summary>
                     <svg class="adt-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 5h18l-7 8.5V19l-4 2v-7.5z"/></svg>
-                    {{ $this->tableText('filters') }}
+                    <span class="adt-summary-text">{{ $this->tableText('filters') }}</span>
                     <span class="adt-badge" aria-hidden="true" @if ($activeFilters === 0) hidden @endif>{{ $activeFilters }}</span>
                     <span class="adt-sr-only">{{ $activeFilters > 0 ? $this->tableText('active_filters', $activeFilters, ['count' => \Acunsoft\DataTable\Laravel\Support\Format::count($activeFilters)]) : '' }}</span>
                 </summary>
@@ -98,10 +98,10 @@
 
     @case('columns')
         @if (count($allColumns) > 1 && (collect($allColumns)->contains(fn ($column) => $column->isHideable()) || $this->reorderableColumns() || $this->resizableColumns()))
-            <details class="adt-columns" wire:ignore.self x-data @click.outside="$el.open = false" @keydown.escape="$el.open = false; $el.querySelector('summary').focus()">
+            <details class="adt-columns" wire:ignore.self x-data @click.outside="$el.open = false" @keydown.escape="$el.open = false; $el.querySelector('summary').focus()" @toggle="@include('acun-datatable::livewire.menu-place')">
                 <summary>
                     <svg class="adt-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M9 4v16M15 4v16M4 4h16v16H4z"/></svg>
-                    {{ $this->tableText('columns') }}
+                    <span class="adt-summary-text">{{ $this->tableText('columns') }}</span>
                 </summary>
                 @php $ordered = $this->orderedColumns(); $reorderable = $this->reorderableColumns(); @endphp
                 <fieldset>
@@ -138,10 +138,10 @@
     @case('tools')
         @php $exportFormats = array_values(array_intersect($this->exportFormats(), ['xlsx', 'csv'])); @endphp
         @if ($exportFormats !== [] || $this->printable() || $importable)
-            <details class="adt-columns adt-menu" wire:ignore.self x-data @click.outside="$el.open = false" @keydown.escape="$el.open = false; $el.querySelector('summary').focus()">
+            <details class="adt-columns adt-menu" wire:ignore.self x-data @click.outside="$el.open = false" @keydown.escape="$el.open = false; $el.querySelector('summary').focus()" @toggle="@include('acun-datatable::livewire.menu-place')">
                 <summary>
                     <svg class="adt-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>
-                    {{ $this->tableText('tools') }}
+                    <span class="adt-summary-text">{{ $this->tableText('tools') }}</span>
                 </summary>
                 <div class="adt-menu-list">
                     @if ($exportFormats !== [])
@@ -157,7 +157,7 @@
                         @if ($exportFormats !== []) <hr class="adt-menu-separator"> @endif
                         @if ($this->printable())
                             <button type="button" class="adt-menu-item adt-print-button"
-                                @click="$el.closest('details').open = false; window.print()">{{ $this->tableText('print') }}</button>
+                                @click="$el.closest('details').open = false; @include('acun-datatable::livewire.print')">{{ $this->tableText('print') }}</button>
                         @endif
                         @if ($importable)
                             <label class="adt-menu-item" for="{{ $importId }}" tabindex="0"

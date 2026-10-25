@@ -54,7 +54,7 @@ final class LivewireLayoutTest extends TestCase
         self::assertTrue($top < strpos($html, 'class="adt-length"') && strpos($html, 'class="adt-length"') < $table);
         self::assertTrue($top < strpos($html, 'class="adt-search"') && strpos($html, 'class="adt-search"') < $table);
         self::assertTrue($bottom > $table && strpos($html, 'class="adt-info"') > $bottom && strpos($html, 'class="adt-paging"') > $bottom);
-        self::assertStringNotContainsString('adt-menu', $html); // no export, print or import: no tools menu
+        self::assertStringNotContainsString('class="adt-columns adt-menu"', $html); // no export, print or import: no tools menu
     }
 
     public function test_a_custom_layout_moves_features_and_includes_your_own_views(): void
@@ -89,13 +89,17 @@ final class LivewireLayoutTest extends TestCase
     {
         $html = Livewire::test(LayoutOrdersTable::class)->html();
         self::assertStringContainsString('class="adt-columns adt-menu"', $html);
-        self::assertStringContainsString('window.print()', $html);
+        self::assertStringContainsString('<span class="adt-summary-text">Tools</span>', $html); // the name stays when phones show the icon
+        self::assertStringContainsString('--adt-menu-shift', $html); // the open menu is kept inside the window
+        self::assertStringContainsString('adt-print-button', $html);
+        self::assertStringContainsString('view.print()', $html); // only the table, in a hidden frame
+        self::assertStringNotContainsString('window.print()', $html); // not the whole page
         self::assertStringNotContainsString('adt-export-button', $html); // no export formats declared
 
         $import = Livewire::test(OrdersImportTable::class);
         $html = $import->html();
         self::assertStringContainsString('wire:click="export(\'xlsx\')"', $html);
-        self::assertStringNotContainsString('window.print()', $html); // printable() is off by default
+        self::assertStringNotContainsString('adt-print-button', $html); // printable() is off by default
         self::assertMatchesRegularExpression('/<label class="adt-menu-item" for="(adt-import-[^"]+)"/', $html);
         preg_match('/<label class="adt-menu-item" for="(adt-import-[^"]+)"/', $html, $match);
         self::assertStringContainsString('id="'.$match[1].'"', $html); // the label opens the hidden file input
