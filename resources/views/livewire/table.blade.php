@@ -89,7 +89,7 @@
         wire:loading.class="adt-loading" wire:loading.attr="aria-busy">
         <div class="adt-notice" role="status" wire:loading>{{ $this->tableText('loading') }}</div>
         <div class="adt-scroll">
-            <table @class(['adt-table', 'adt-has-p2' => $collapsible && in_array(2, $levels, true), 'adt-has-p3' => $collapsible && in_array(3, $levels, true), 'adt-has-detail' => $detailView !== null, 'adt-fixed-layout' => $widths !== []])
+            <table @class(['adt-table', 'adt-has-p2' => $collapsible && in_array(2, $levels, true), 'adt-has-p3' => $collapsible && in_array(3, $levels, true), 'adt-has-detail' => $detailView !== null, 'adt-fixed-layout' => $widths !== [], 'adt-user-widths' => $widths !== []])
                 @if (isset($widths['__actions'])) style="--adt-actions-width: {{ $widths['__actions'] }}px" @endif
                 @if ($selectable) x-data="{ anchor: null }" @endif>
                 @if ($this->caption() !== null)
