@@ -9,6 +9,8 @@ use Acunsoft\DataTable\Laravel\DataTableServiceProvider;
 use Acunsoft\DataTable\Laravel\Support\FilterPanel;
 use Acunsoft\DataTable\Laravel\Tests\Fixtures\FilterOrdersTable;
 use Acunsoft\DataTable\Laravel\Tests\Fixtures\Order;
+use Acunsoft\DataTable\Laravel\Tests\Fixtures\PanelOrdersTable;
+use Illuminate\Support\Facades\View;
 use InvalidArgumentException;
 use Livewire\Livewire;
 use Livewire\LivewireServiceProvider;
@@ -119,5 +121,47 @@ final class LivewireFiltersTest extends TestCase
         self::assertSame('2026-10-24 09:00:00', $json['totals']['created']);
         self::assertSame(4, (int) $json['totals']['note']); // COUNT skips NULL; an empty string is a value in SQL
         self::assertCount(2, $json['rows']);
+    }
+
+    public function test_the_filter_panel_opens_in_a_drawer_or_a_modal(): void
+    {
+        foreach (['drawer', 'modal'] as $mode) {
+            $html = Livewire::test(PanelOrdersTable::class, ['mode' => $mode])->call('filterBy', 'customer', ['text' => 'a'])->html();
+            self::assertStringContainsString("adt-filters adt-filters--{$mode}", $html);
+            self::assertMatchesRegularExpression('/<button type="button" class="adt-filter-open" aria-haspopup="dialog"/', $html);
+            self::assertStringContainsString("<dialog class=\"adt-dialog adt-filter-dialog adt-filter-dialog--{$mode}\" x-ref=\"dialog\" wire:ignore.self", $html);
+            self::assertStringContainsString('class="adt-button adt-button--primary adt-filter-done"', $html);
+            self::assertMatchesRegularExpression('/<span class="adt-badge" aria-hidden="true"\s*>1<\/span>/', $html);
+            self::assertStringNotContainsString('<details class="adt-columns adt-menu adt-filters"', $html);
+        }
+        $this->expectException(\Throwable::class);
+        Livewire::test(PanelOrdersTable::class, ['mode' => 'sheet']);
+    }
+
+    public function test_toolbar_buttons_take_your_text_icon_and_classes(): void
+    {
+        $html = preg_replace('/<!--.*?-->/', '', Livewire::test(PanelOrdersTable::class, ['mode' => 'dropdown', 'buttons' => [
+            'filters' => ['label' => 'Narrow down', 'class' => 'btn btn-light'],
+            'columns' => ['iconOnly' => true, 'icon' => false],
+            'tools' => ['icon' => 'M1 1h22'],
+        ]])->html());
+        self::assertMatchesRegularExpression('/<summary\s+class="btn btn-light"\s*>\s*<svg[^>]*><path d="M3 5h18[^"]*"\/><\/svg>\s*<span class="adt-summary-text">Narrow down<\/span>/', $html);
+        self::assertMatchesRegularExpression('/<summary\s+class="adt-icon-only"\s+title="Columns"\s*>\s*<span class="adt-summary-text">Columns<\/span>/', $html);
+        self::assertStringContainsString('<path d="M1 1h22"/></svg>', $html);
+        $this->expectException(\Throwable::class);
+        Livewire::test(PanelOrdersTable::class, ['buttons' => ['columns' => ['icon' => 'no such icon!']]]);
+    }
+
+    public function test_the_filter_fields_go_into_your_own_modal(): void
+    {
+        View::addNamespace('fixtures', __DIR__.'/Fixtures/views');
+        $table = Livewire::test(PanelOrdersTable::class, ['ownModal' => true]);
+        $html = $table->html();
+        self::assertStringContainsString('class="my-modal"', $html);
+        self::assertStringNotContainsString('adt-filter-open', $html); // the built-in button left out of the layout
+        preg_match_all('/<fieldset class="adt-filter adt-filter--(\w+)" data-field="(\w+)"/', $html, $sets);
+        self::assertSame(['customer', 'total'], $sets[2]);
+        $table->call('filterBy', 'customer', ['text' => 'ay']);
+        self::assertMatchesRegularExpression('/wire:click="clearPanelFilters"\s*>/', $table->html()); // "Clear filters" is enabled
     }
 }

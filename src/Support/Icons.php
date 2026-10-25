@@ -16,6 +16,12 @@ final class Icons
         'check' => 'M20 6 9 17l-5-5',
         'download' => 'M12 3v12M7 10l5 5 5-5M5 21h14',
         'close' => 'M18 6 6 18M6 6l12 12',
+        'filter' => 'M3 5h18l-7 8.5V19l-4 2v-7.5z',
+        'columns' => 'M9 4v16M15 4v16M4 4h16v16H4z',
+        'search' => 'M21 21l-4.35-4.35M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14z',
+        'expand' => 'M12 8v8M8 12h8M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z',
+        'up' => 'M18 15l-6-6-6 6',
+        'down' => 'M6 9l6 6 6-6',
     ];
 
     /** The path of a built-in icon, or the given path data when it only holds path commands. */

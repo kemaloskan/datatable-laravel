@@ -12,6 +12,7 @@ use Acunsoft\DataTable\Laravel\TableExport;
 use Acunsoft\DataTable\Laravel\TablePage;
 use Acunsoft\DataTable\Laravel\TableQuery;
 use Acunsoft\DataTable\Laravel\Support\FilterPanel;
+use Acunsoft\DataTable\Laravel\Support\Icons;
 use Acunsoft\DataTable\Laravel\Support\PageItems;
 use Acunsoft\DataTable\Laravel\Support\TableTasks;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -307,6 +308,54 @@ trait WithDataTable
     protected function scrollY(): ?string
     {
         return null;
+    }
+
+    /**
+     * Where the filter fields open: `dropdown` under the button (default),
+     * `drawer` from the side of the window, `modal` centred. For your own
+     * drawer or modal, leave `filters` out of `tableLayout()` and put
+     * `@include('acun-datatable::livewire.filter-panel')` in your own view.
+     */
+    protected function filterPanel(): string
+    {
+        return 'dropdown';
+    }
+
+    /**
+     * Text, icon and classes of the toolbar buttons, by feature (`columns`,
+     * `filters`, `tools`): `['filters' => ['label' => 'Süz', 'icon' => 'filter',
+     * 'iconOnly' => true, 'class' => 'btn btn-light']]`. `icon` is a built-in
+     * name, SVG path data (24×24) or `false` for none.
+     *
+     * @return array<string, array{label?: string, icon?: string|false, iconOnly?: bool, class?: string}>
+     */
+    protected function toolbarButtons(): array
+    {
+        return [];
+    }
+
+    /**
+     * The look of one toolbar button for the views: its text, icon path (or
+     * null), whether only the icon shows, and its classes.
+     *
+     * @return array{label: string, path: ?string, iconOnly: bool, class: string}
+     */
+    protected function toolbarButton(string $feature, string $label, string $icon): array
+    {
+        $custom = $this->toolbarButtons()[$feature] ?? [];
+        $chosen = $custom['icon'] ?? $icon;
+        $path = $chosen === false ? null : Icons::path((string) $chosen);
+        if ($chosen !== false && $path === null) {
+            throw new \InvalidArgumentException("Toolbar button [{$feature}]: unknown icon [{$chosen}].");
+        }
+        $iconOnly = (bool) ($custom['iconOnly'] ?? false);
+
+        return [
+            'label' => (string) ($custom['label'] ?? $label),
+            'path' => $path,
+            'iconOnly' => $iconOnly,
+            'class' => trim(($iconOnly ? 'adt-icon-only ' : '').($custom['class'] ?? '')),
+        ];
     }
 
     /** Show "Print" in the tools menu: prints only the table (the rows on screen), not the page around it. */

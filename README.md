@@ -205,6 +205,42 @@ Column::make('total')->header('Tutar')->type('decimal')->filter(),
 Column::make('status')->header('Durum')->options(['paid' => 'Ödendi', 'new' => 'Yeni']),
 ```
 
+The fields open under the button by default; `filterPanel()` opens them in a
+drawer from the right (`drawer`, full width on phones) or a centred dialog
+(`modal`): a native `<dialog>`, closed with Escape, the backdrop or "Close".
+For a drawer or modal of your own, leave `filters` out of `tableLayout()` and
+include only the fields in your own layout feature view:
+
+```php
+protected function filterPanel(): string { return 'drawer'; } // dropdown | drawer | modal
+
+// Or your own component in place of the built-in button:
+protected function tableLayout(): array { return ['topEnd' => ['orders.filter-modal', 'columns', 'tools']]; }
+```
+
+```blade
+{{-- resources/views/orders/filter-modal.blade.php --}}
+<div x-data>
+    <button type="button" class="btn btn-light" x-on:click="$refs.modal.showModal()">Filtrele</button>
+    <dialog x-ref="modal" wire:ignore.self>@include('acun-datatable::livewire.filter-panel')</dialog>
+</div>
+```
+
+**Toolbar buttons.** `toolbarButtons()` sets the text, icon, icon-only look and
+classes of the `columns`, `filters` and `tools` buttons; `icon` is a built-in
+name, SVG path data or `false`, and your classes (e.g. Bootstrap's) win over
+the package's `:where()` styles. Below 640px these buttons show only their icon.
+
+```php
+protected function toolbarButtons(): array
+{
+    return [
+        'filters' => ['label' => 'Süz', 'class' => 'btn btn-outline-secondary'],
+        'columns' => ['iconOnly' => true],
+    ];
+}
+```
+
 **Rows per page.** `pageSizeOptions()` sets the choices of the select and
 `defaultPageSize()` the size at the start (default 25, or the first option);
 `pageSize` stays in the URL only while it differs from the default.

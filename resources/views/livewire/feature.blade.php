@@ -32,76 +32,54 @@
         @php
             $panel = collect($allColumns)->filter(fn ($column) => $column->hasFilter())->values();
             $activeFilters = $panel->filter(fn ($column) => \Acunsoft\DataTable\Laravel\Support\FilterPanel::rules($column, \Acunsoft\DataTable\Laravel\Support\FilterPanel::read($column, $appliedFilters)) !== [])->count();
+            $panelMode = $this->filterPanel();
+            if (! in_array($panelMode, ['dropdown', 'drawer', 'modal'], true)) {
+                throw new \InvalidArgumentException("filterPanel() must be dropdown, drawer or modal, [{$panelMode}] given.");
+            }
+            $button = $this->toolbarButton('filters', $this->tableText('filters'), 'filter');
+            $syncFields = "\$el.querySelectorAll('input').forEach(input => { if (input === document.activeElement) return; if (input.type === 'checkbox' || input.type === 'radio') input.checked = input.hasAttribute('checked'); else input.value = input.getAttribute('value') ?? ''; })";
         @endphp
         @if ($panel->isNotEmpty())
-            {{-- wire:ignore.self keeps the menu open while Livewire updates its content. --}}
-            <details class="adt-columns adt-menu adt-filters" wire:ignore.self x-data @click.outside="$el.open = false" @keydown.escape="$el.open = false; $el.querySelector('summary').focus()" @toggle="@include('acun-datatable::livewire.menu-place')"
-                x-on:adt-filters-synced.window="$el.querySelectorAll('input').forEach(input => { if (input === document.activeElement) return; if (input.type === 'checkbox' || input.type === 'radio') input.checked = input.hasAttribute('checked'); else input.value = input.getAttribute('value') ?? ''; })">
-                <summary>
-                    <svg class="adt-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 5h18l-7 8.5V19l-4 2v-7.5z"/></svg>
-                    <span class="adt-summary-text">{{ $this->tableText('filters') }}</span>
-                    <span class="adt-badge" aria-hidden="true" @if ($activeFilters === 0) hidden @endif>{{ $activeFilters }}</span>
-                    <span class="adt-sr-only">{{ $activeFilters > 0 ? $this->tableText('active_filters', $activeFilters, ['count' => \Acunsoft\DataTable\Laravel\Support\Format::count($activeFilters)]) : '' }}</span>
-                </summary>
-                <div class="adt-filter-panel" role="group" aria-label="{{ $this->tableText('filters') }}">
-                    @foreach ($panel as $column)
-                        @php
-                            $kind = \Acunsoft\DataTable\Laravel\Support\FilterPanel::kind($column);
-                            $values = \Acunsoft\DataTable\Laravel\Support\FilterPanel::read($column, $appliedFilters);
-                            $field = \Illuminate\Support\Js::from($column->id());
-                            $controlId = 'adt-'.$this->getId().'-filter-'.$loop->index;
-                        @endphp
-                        <fieldset class="adt-filter adt-filter--{{ $kind }}" data-field="{{ $column->id() }}" x-data wire:key="adt-filter-{{ $column->id() }}">
-                            <legend>{{ $column->headerText() }}</legend>
-                            @if ($kind === 'text')
-                                <input type="search" class="adt-control" autocomplete="off" aria-label="{{ $column->headerText() }}" value="{{ $values['text'] }}"
-                                    x-on:input.debounce.400ms="$wire.filterBy({{ $field }}, { text: $el.value })">
-                            @elseif ($kind === 'boolean')
-                                @foreach (['' => 'filter_any', 'true' => 'yes', 'false' => 'no'] as $flag => $text)
-                                    <label class="adt-filter-choice">
-                                        <input type="radio" name="{{ $controlId }}" value="{{ $flag }}" @checked($values['flag'] === $flag)
-                                            x-on:change="$wire.filterBy({{ $field }}, { flag: $el.value })">
-                                        <span>{{ $this->tableText($text) }}</span>
-                                    </label>
-                                @endforeach
-                            @elseif ($kind === 'options')
-                                @foreach ($column->filterOptions() as $value => $label)
-                                    <label class="adt-filter-choice">
-                                        <input type="checkbox" value="{{ $value }}" @checked(in_array((string) $value, $values['selected'], true))
-                                            x-on:change="$wire.filterBy({{ $field }}, { selected: [...$root.querySelectorAll('input:checked')].map(input => input.value) })">
-                                        <span>{{ $label }}</span>
-                                    </label>
-                                @endforeach
-                            @else
-                                @php $dates = $kind === 'dates'; @endphp
-                                <div class="adt-filter-range">
-                                    <input type="{{ $dates ? 'date' : 'number' }}" class="adt-control" x-ref="min" value="{{ $values['min'] }}"
-                                        @if (! $dates) inputmode="decimal" step="any" placeholder="{{ $this->tableText('filter_min') }}" @endif
-                                        aria-label="{{ $column->headerText() }}: {{ $this->tableText($dates ? 'filter_from' : 'filter_min') }}"
-                                        x-on:change="$wire.filterBy({{ $field }}, { min: $refs.min.value, max: $refs.max.value })">
-                                    <span aria-hidden="true">–</span>
-                                    <input type="{{ $dates ? 'date' : 'number' }}" class="adt-control" x-ref="max" value="{{ $values['max'] }}"
-                                        @if (! $dates) inputmode="decimal" step="any" placeholder="{{ $this->tableText('filter_max') }}" @endif
-                                        aria-label="{{ $column->headerText() }}: {{ $this->tableText($dates ? 'filter_to' : 'filter_max') }}"
-                                        x-on:change="$wire.filterBy({{ $field }}, { min: $refs.min.value, max: $refs.max.value })">
-                                </div>
-                            @endif
-                        </fieldset>
-                    @endforeach
-                    <div class="adt-filter-foot">
-                        <button type="button" class="adt-button adt-filter-clear" wire:click="clearPanelFilters" @disabled($activeFilters === 0)>{{ $this->tableText('clear_filters') }}</button>
-                    </div>
+            @if ($panelMode === 'dropdown')
+                {{-- wire:ignore.self keeps the menu open while Livewire updates its content. --}}
+                <details class="adt-columns adt-menu adt-filters" wire:ignore.self x-data @click.outside="$el.open = false" @keydown.escape="$el.open = false; $el.querySelector('summary').focus()" @toggle="@include('acun-datatable::livewire.menu-place')"
+                    x-on:adt-filters-synced.window="{{ $syncFields }}">
+                    <summary @if ($button['class'] !== '') class="{{ $button['class'] }}" @endif @if ($button['iconOnly']) title="{{ $button['label'] }}" @endif>
+                        @include('acun-datatable::livewire.toolbar-button')
+                        <span class="adt-badge" aria-hidden="true" @if ($activeFilters === 0) hidden @endif>{{ $activeFilters }}</span>
+                        <span class="adt-sr-only">{{ $activeFilters > 0 ? $this->tableText('active_filters', $activeFilters, ['count' => \Acunsoft\DataTable\Laravel\Support\Format::count($activeFilters)]) : '' }}</span>
+                    </summary>
+                    @include('acun-datatable::livewire.filter-panel')
+                </details>
+            @else
+                {{-- A drawer or a modal: a <dialog> (Escape closes it, focus stays inside); wire:ignore.self keeps it open while Livewire updates. --}}
+                <div class="adt-columns adt-menu adt-filters adt-filters--{{ $panelMode }}" x-data x-on:adt-filters-synced.window="{{ $syncFields }}">
+                    <button type="button" class="adt-filter-open{{ $button['class'] !== '' ? ' '.$button['class'] : '' }}" aria-haspopup="dialog"
+                        @if ($button['iconOnly']) title="{{ $button['label'] }}" @endif x-on:click="$refs.dialog.showModal()">
+                        @include('acun-datatable::livewire.toolbar-button')
+                        <span class="adt-badge" aria-hidden="true" @if ($activeFilters === 0) hidden @endif>{{ $activeFilters }}</span>
+                        <span class="adt-sr-only">{{ $activeFilters > 0 ? $this->tableText('active_filters', $activeFilters, ['count' => \Acunsoft\DataTable\Laravel\Support\Format::count($activeFilters)]) : '' }}</span>
+                    </button>
+                    <dialog class="adt-dialog adt-filter-dialog adt-filter-dialog--{{ $panelMode }}" x-ref="dialog" wire:ignore.self aria-labelledby="adt-{{ $this->getId() }}-filters-title"
+                        x-on:click="if ($event.target === $el) { const box = $el.getBoundingClientRect(); if ($event.clientX < box.left || $event.clientX > box.right || $event.clientY < box.top || $event.clientY > box.bottom) $el.close(); }"
+                        x-on:close="$root.querySelector('.adt-filter-open').focus()">
+                        <div class="adt-dialog-head">
+                            <h2 class="adt-dialog-title" id="adt-{{ $this->getId() }}-filters-title">{{ $this->tableText('filters') }}</h2>
+                            <button type="button" class="adt-dialog-close" aria-label="{{ $this->tableText('close') }}" x-on:click="$refs.dialog.close()"><svg class="adt-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+                        </div>
+                        @include('acun-datatable::livewire.filter-panel', ['inDialog' => true])
+                    </dialog>
                 </div>
-            </details>
+            @endif
         @endif
         @break
 
     @case('columns')
         @if (count($allColumns) > 1 && (collect($allColumns)->contains(fn ($column) => $column->isHideable()) || $this->reorderableColumns() || $this->resizableColumns()))
             <details class="adt-columns" wire:ignore.self x-data @click.outside="$el.open = false" @keydown.escape="$el.open = false; $el.querySelector('summary').focus()" @toggle="@include('acun-datatable::livewire.menu-place')">
-                <summary>
-                    <svg class="adt-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M9 4v16M15 4v16M4 4h16v16H4z"/></svg>
-                    <span class="adt-summary-text">{{ $this->tableText('columns') }}</span>
+                @php $button = $this->toolbarButton('columns', $this->tableText('columns'), 'columns'); @endphp
+                <summary @if ($button['class'] !== '') class="{{ $button['class'] }}" @endif @if ($button['iconOnly']) title="{{ $button['label'] }}" @endif>
+                    @include('acun-datatable::livewire.toolbar-button')
                 </summary>
                 @php $ordered = $this->orderedColumns(); $reorderable = $this->reorderableColumns(); @endphp
                 <fieldset>
@@ -139,9 +117,9 @@
         @php $exportFormats = array_values(array_intersect($this->exportFormats(), ['xlsx', 'csv'])); @endphp
         @if ($exportFormats !== [] || $this->printable() || $importable)
             <details class="adt-columns adt-menu" wire:ignore.self x-data @click.outside="$el.open = false" @keydown.escape="$el.open = false; $el.querySelector('summary').focus()" @toggle="@include('acun-datatable::livewire.menu-place')">
-                <summary>
-                    <svg class="adt-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>
-                    <span class="adt-summary-text">{{ $this->tableText('tools') }}</span>
+                @php $button = $this->toolbarButton('tools', $this->tableText('tools'), 'download'); @endphp
+                <summary @if ($button['class'] !== '') class="{{ $button['class'] }}" @endif @if ($button['iconOnly']) title="{{ $button['label'] }}" @endif>
+                    @include('acun-datatable::livewire.toolbar-button')
                 </summary>
                 <div class="adt-menu-list">
                     @if ($exportFormats !== [])
