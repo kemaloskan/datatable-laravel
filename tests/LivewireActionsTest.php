@@ -56,6 +56,10 @@ final class LivewireActionsTest extends TestCase
         $table = Livewire::test(OrdersTable::class)->call('toggleRow', '1')->call('toggleRow', '3');
         self::assertStringContainsString('wire:click="runBulkAction(\'archive\')"', $table->html());
         self::assertStringContainsString('wire:confirm="Archive the selected orders?"', $table->html());
+        // Phones: the same choices as a select, the confirmation kept.
+        self::assertStringContainsString('class="adt-control adt-selection-menu"', $table->html());
+        self::assertMatchesRegularExpression('/<option value="archive"\s+data-confirm="Archive the selected orders\?"\s*>Archive/', $table->html());
+        self::assertStringContainsString('<option value="__clear">Clear selection</option>', $table->html());
         $table->call('runBulkAction', 'archive')->assertSet('selected', []);
         self::assertSame([1, 3], Order::query()->where('note', 'archived')->orderBy('id')->pluck('id')->all());
     }

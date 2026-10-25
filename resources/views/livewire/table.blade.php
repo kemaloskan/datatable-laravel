@@ -79,6 +79,20 @@
                     : $this->tableText('select_matching_many', ['total' => \Acunsoft\DataTable\Laravel\Support\Format::count($rows->total())]) }}</button>
             @endif
             <button type="button" class="adt-clear-selection" wire:click="clearSelection">{{ $this->tableText('clear_selection') }}</button>
+            {{-- Phones: the same choices as one select (styles.css shows it instead of the buttons there). --}}
+            <select class="adt-control adt-selection-menu" aria-label="{{ $this->tableText('bulk_actions') }}" x-data
+                x-on:change="const option = $el.selectedOptions[0]; $el.value = ''; if (option.value === '__matching') $wire.selectAllMatching(); else if (option.value === '__clear') $wire.clearSelection();@if (count($bulkActions) > 0) else if (! option.dataset.confirm || window.confirm(option.dataset.confirm)) $wire.runBulkAction(option.value)@endif">
+                <option value="" disabled selected>{{ $this->tableText('actions') }}</option>
+                @foreach ($bulkActions as $action)
+                    <option value="{{ $action->id() }}" @if ($action->confirmText() !== null) data-confirm="{{ $action->confirmText() }}" @endif>{{ $action->labelText() }}</option>
+                @endforeach
+                @if (! $this->allMatching && ($rows->total() > $selectedCount || ! $exactTotal))
+                    <option value="__matching">{{ $exactTotal
+                        ? $this->tableText('select_matching', $rows->total(), ['total' => \Acunsoft\DataTable\Laravel\Support\Format::count($rows->total())])
+                        : $this->tableText('select_matching_many', ['total' => \Acunsoft\DataTable\Laravel\Support\Format::count($rows->total())]) }}</option>
+                @endif
+                <option value="__clear">{{ $this->tableText('clear_selection') }}</option>
+            </select>
         </div>
     @endif
 
