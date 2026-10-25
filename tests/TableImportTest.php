@@ -96,6 +96,16 @@ final class TableImportTest extends TestCase
         $this->post(self::URL, [], ['Accept' => 'application/json'])->assertStatus(422)->assertJsonPath('errors.file.0', 'Choose a file to import.');
     }
 
+    public function test_a_zip_bomb_is_refused_while_it_is_read(): void
+    {
+        // 207 KB whose sheet inflates to 200 MB while the archive claims 1 KB.
+        OrdersImport::$maxKilobytes = 1024;
+        $bomb = UploadedFile::fake()->createWithContent('orders.xlsx', (string) file_get_contents(__DIR__.'/Fixtures/zip-bomb.xlsx'));
+        $before = memory_get_usage(true);
+        $this->upload($bomb)->assertStatus(422);
+        self::assertLessThan(120 * 1024 * 1024, memory_get_peak_usage(true) - $before);
+    }
+
     public function test_the_same_idempotency_key_gives_the_same_import(): void
     {
         $first = $this->upload($this->csv($this->orders(2)), ['Idempotency-Key' => 'abc'])->assertCreated()->json('id');
@@ -133,6 +143,13 @@ final class TableImportTest extends TestCase
         $id = $this->upload($this->csv("Customer,Total\nAli Kaya,3\nNobody Yet,4"))->json('id');
         $this->postJson(self::URL."/{$id}/start", ['mapping' => ['customer', 'total'], 'mode' => 'update'])->assertJson(['updated' => 1, 'skipped' => 1, 'inserted' => 0]);
         self::assertFalse(Order::query()->where('customer', 'Nobody Yet')->exists());
+    }
+
+    public function test_a_key_twice_in_one_file_inserts_once_then_updates(): void
+    {
+        $id = $this->upload($this->csv("Customer,Total\nTwice,1\nTwice,2\nAli Kaya,3"))->json('id');
+        $this->postJson(self::URL."/{$id}/start", ['mapping' => ['customer', 'total'], 'mode' => 'upsert'])->assertJson(['inserted' => 1, 'updated' => 2]);
+        self::assertSame(['2.00'], Order::query()->where('customer', 'Twice')->pluck('total')->all());
     }
 
     public function test_the_error_report_lists_every_refused_row_and_guards_formulas(): void

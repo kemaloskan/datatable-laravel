@@ -190,18 +190,25 @@ abstract class TableImport
         $query = $this->query($context) ?? throw new \LogicException(static::class.': override query() or save().');
         $key = $this->importKey();
         $keyColumn = $key === null ? null : ($this->column($key)?->databaseColumn() ?? $key);
+        // The records the chunk refers to, in one query per 1,000 keys (not one per row).
+        $existing = [];
+        if ($keyColumn !== null) {
+            $values = array_values(array_unique(array_filter(array_map(fn (array $row) => $row['values'][$key] ?? null, $rows), fn ($value) => $value !== null), SORT_REGULAR));
+            foreach (array_chunk($values, 1_000) as $part) {
+                foreach ((clone $query)->whereIn($keyColumn, $part)->get() as $record) {
+                    $existing[(string) data_get($record, $keyColumn)] = $record;
+                }
+            }
+        }
         foreach ($rows as $row) {
             $attributes = $this->attributes($row['values'], $context);
             $value = $key === null ? null : ($row['values'][$key] ?? null);
-            $existing = null;
-            if ($keyColumn !== null && $value !== null) {
-                $existing = (clone $query)->where($keyColumn, $value)->first();
-            }
-            if ($existing !== null) {
+            $found = $value === null ? null : ($existing[(string) $value] ?? null);
+            if ($found !== null) {
                 if ($context->mode === 'insert') {
                     $context->reject($row['line'], __('acun-datatable::table.import_exists'), $key, (string) $value);
-                } elseif ($existing instanceof Model) {
-                    $existing->forceFill($attributes)->save();
+                } elseif ($found instanceof Model) {
+                    $found->forceFill($attributes)->save();
                     $context->updated();
                 } else {
                     (clone $query)->where($keyColumn, $value)->update($attributes);
@@ -212,9 +219,13 @@ abstract class TableImport
             } else {
                 if ($query instanceof QueryBuilder) {
                     (clone $query)->insert($attributes);
+                    $saved = (object) $attributes;
                 } else {
-                    $model = $query instanceof Relation ? $query->make() : $query->getModel()->newInstance();
-                    $model->forceFill($attributes)->save();
+                    $saved = $query instanceof Relation ? $query->make() : $query->getModel()->newInstance();
+                    $saved->forceFill($attributes)->save();
+                }
+                if ($value !== null) {
+                    $existing[(string) $value] = $saved; // the same key later in the file updates it
                 }
                 $context->inserted();
             }
