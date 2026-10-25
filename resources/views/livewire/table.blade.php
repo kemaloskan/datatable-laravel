@@ -103,12 +103,13 @@
                         @if ($selectable)
                             <th scope="col" class="adt-select">
                                 @if ($rows->isNotEmpty())
-                                    <input type="checkbox"
+                                    {{-- The text shows only in cards (phones), where the header row is gone. --}}
+                                    <label class="adt-select-all"><input type="checkbox"
                                         aria-label="{{ $this->tableText('select_all') }}"
                                         wire:key="adt-page-{{ $pageSelection }}"
                                         wire:click="togglePage"
                                         @checked($pageSelection === 'all')
-                                        @if ($pageSelection === 'some') x-init="$el.indeterminate = true" @endif>
+                                        @if ($pageSelection === 'some') x-init="$el.indeterminate = true" @endif><span class="adt-select-all-text" aria-hidden="true">{{ $this->tableText('select_all') }}</span></label>
                                 @endif
                             </th>
                         @endif
